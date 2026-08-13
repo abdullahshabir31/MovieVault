@@ -1,5 +1,6 @@
 // Supabase client configuration — reads credentials from environment variables.
 import { createClient } from "@supabase/supabase-js";
+import { authStorage } from "@/lib/auth-storage";
 function isNewSupabaseApiKey(value) {
   return value.startsWith("sb_publishable_") || value.startsWith("sb_secret_");
 }
@@ -46,7 +47,7 @@ function createSupabaseClient() {
       fetch: createSupabaseFetch(SUPABASE_PUBLISHABLE_KEY),
     },
     auth: {
-      storage: typeof window !== "undefined" ? localStorage : undefined,
+      storage: typeof window !== "undefined" ? authStorage : undefined,
       persistSession: true,
       autoRefreshToken: true,
     },

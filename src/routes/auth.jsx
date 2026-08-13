@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Eye, EyeOff, Film, Loader2 } from "lucide-react";
+import { Film, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { setRememberMe } from "@/lib/auth-storage";
+import { getPasswordError } from "@/lib/password";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { PasswordInput } from "@/components/PasswordInput";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link } from "@tanstack/react-router";
 
@@ -58,7 +61,6 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
-  const [show, setShow] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
@@ -70,6 +72,7 @@ function LoginForm() {
       return;
     }
     setPending(true);
+    setRememberMe(remember);
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
@@ -83,7 +86,6 @@ function LoginForm() {
       );
       return;
     }
-    if (!remember) sessionStorage.setItem("movievault-session-only", "1");
     toast.success("Welcome back");
     navigate({ to: "/dashboard", replace: true });
   };
@@ -104,24 +106,12 @@ function LoginForm() {
       </div>
       <div className="space-y-2">
         <Label htmlFor="login-password">Password</Label>
-        <div className="relative">
-          <Input
-            id="login-password"
-            type={show ? "text" : "password"}
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className="h-12 pr-11"
-          />
-          <button
-            type="button"
-            onClick={() => setShow((v) => !v)}
-            aria-label={show ? "Hide password" : "Show password"}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          >
-            {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-          </button>
-        </div>
+        <PasswordInput
+          id="login-password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
       </div>
 
       <div className="flex items-center justify-between">
@@ -160,10 +150,12 @@ function RegisterForm() {
     if (fullName.trim().length < 2) return setError("Please enter your full name.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
       return setError("Enter a valid email address.");
-    if (password.length < 8) return setError("Password must be at least 8 characters.");
+    const passwordError = getPasswordError(password);
+    if (passwordError) return setError(passwordError);
     if (password !== confirm) return setError("Passwords don't match.");
 
     setPending(true);
+    setRememberMe(true);
     const { error: signUpError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
@@ -223,24 +215,20 @@ function RegisterForm() {
       </div>
       <div className="space-y-2">
         <Label htmlFor="register-password">Password</Label>
-        <Input
+        <PasswordInput
           id="register-password"
-          type="password"
           autoComplete="new-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          className="h-12"
         />
       </div>
       <div className="space-y-2">
         <Label htmlFor="confirm-password">Confirm password</Label>
-        <Input
+        <PasswordInput
           id="confirm-password"
-          type="password"
           autoComplete="new-password"
           value={confirm}
           onChange={(event) => setConfirm(event.target.value)}
-          className="h-12"
         />
       </div>
 

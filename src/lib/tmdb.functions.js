@@ -44,7 +44,7 @@ function mapMovie(m) {
 }
 
 export const searchMoviesTmdb = createServerFn({ method: "GET" })
-  .inputValidator((input) => z.object({ query: z.string().min(1).max(120) }).parse(input))
+  .validator((input) => z.object({ query: z.string().min(1).max(120) }).parse(input))
   .handler(async ({ data }) => {
     const json = await tmdbFetch("/search/movie", {
       query: data.query,
@@ -60,7 +60,7 @@ export const searchMoviesTmdb = createServerFn({ method: "GET" })
   });
 
 export const getMovieTmdb = createServerFn({ method: "GET" })
-  .inputValidator((input) => z.object({ tmdbId: z.number().int().positive() }).parse(input))
+  .validator((input) => z.object({ tmdbId: z.number().int().positive() }).parse(input))
   .handler(async ({ data }) => {
     const json = await tmdbFetch(`/movie/${data.tmdbId}`, { language: "en-US" });
     return mapMovie(json);

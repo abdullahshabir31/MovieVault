@@ -1,18 +1,17 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
 const STORAGE_KEY = "movievault-theme";
-const ThemeContext = createContext({ theme: "system", setTheme: () => {} });
+
+const ThemeContext = createContext({
+  theme: "dark",
+  setTheme: () => {},
+});
 
 function applyTheme(theme) {
   const root = document.documentElement;
-  const resolved =
-    theme === "system"
-      ? window.matchMedia("(prefers-color-scheme: light)").matches
-        ? "light"
-        : "dark"
-      : theme;
-  root.classList.toggle("dark", resolved === "dark");
-  root.style.colorScheme = resolved;
+
+  root.classList.toggle("dark", theme === "dark");
+  root.style.colorScheme = theme;
 }
 
 export function ThemeProvider({ children }) {
@@ -20,22 +19,20 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY) || "dark";
-    setThemeState(stored);
-    applyTheme(stored);
+
+    // Only allow light or dark
+    const validTheme = stored === "light" ? "light" : "dark";
+
+    setThemeState(validTheme);
+    applyTheme(validTheme);
   }, []);
 
-  useEffect(() => {
-    if (theme !== "system") return undefined;
-    const mq = window.matchMedia("(prefers-color-scheme: light)");
-    const onChange = () => applyTheme("system");
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, [theme]);
-
   const setTheme = (next) => {
-    setThemeState(next);
-    localStorage.setItem(STORAGE_KEY, next);
-    applyTheme(next);
+    const validTheme = next === "light" ? "light" : "dark";
+
+    setThemeState(validTheme);
+    localStorage.setItem(STORAGE_KEY, validTheme);
+    applyTheme(validTheme);
   };
 
   return <ThemeContext.Provider value={{ theme, setTheme }}>{children}</ThemeContext.Provider>;

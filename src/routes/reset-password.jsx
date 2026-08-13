@@ -3,8 +3,9 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { KeyRound, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { getPasswordError } from "@/lib/password";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/PasswordInput";
 import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/reset-password")({
@@ -38,7 +39,8 @@ function ResetPassword() {
   const submit = async (event) => {
     event.preventDefault();
     setError("");
-    if (password.length < 8) return setError("Password must be at least 8 characters.");
+    const passwordError = getPasswordError(password);
+    if (passwordError) return setError(passwordError);
     if (password !== confirm) return setError("Passwords don't match.");
     setPending(true);
     const { error: updateError } = await supabase.auth.updateUser({ password });
@@ -47,7 +49,7 @@ function ResetPassword() {
       setError(updateError.message);
       return;
     }
-    toast.success("Password updated");
+    toast.success("Password updated successfully");
     navigate({ to: "/dashboard", replace: true });
   };
 
@@ -71,24 +73,20 @@ function ResetPassword() {
           <form onSubmit={submit} className="mt-4 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="new-password">New password</Label>
-              <Input
+              <PasswordInput
                 id="new-password"
-                type="password"
                 autoComplete="new-password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="h-12"
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirm-new-password">Confirm new password</Label>
-              <Input
+              <PasswordInput
                 id="confirm-new-password"
-                type="password"
                 autoComplete="new-password"
                 value={confirm}
                 onChange={(event) => setConfirm(event.target.value)}
-                className="h-12"
               />
             </div>
             {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}

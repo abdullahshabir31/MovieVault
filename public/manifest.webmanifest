@@ -1,0 +1,16 @@
+{
+  "name": "MovieVault — Movie Tracker",
+  "short_name": "MovieVault",
+  "description": "Track watched movies, rate them and keep your watchlist.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#16181f",
+  "theme_color": "#16181f",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

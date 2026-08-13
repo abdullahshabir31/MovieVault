@@ -1,0 +1,230 @@
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { CheckCircle2, ListPlus, Loader2, Search, Star, X } from "lucide-react";
+import { searchMoviesTmdb } from "@/lib/tmdb.functions";
+import { useAddMovie, useMovies, useUpdateMovie } from "@/hooks/useMovies";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { MoviePoster } from "@/components/MoviePoster";
+import { MovieFormDialog } from "@/components/MovieFormDialog";
+import { EmptyState } from "@/components/EmptyState";
+import { ListSkeleton } from "@/components/LoadingState";
+import { formatDate } from "@/components/MovieCard";
+
+function useDebounced(value, delay = 350) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
+export function MovieSearch({ initialQuery = "" }) {
+  const [term, setTerm] = useState(initialQuery);
+  const debounced = useDebounced(term.trim());
+  const search = useServerFn(searchMoviesTmdb);
+  const { data: library } = useMovies();
+  const [selected, setSelected] = useState(null);
+  const [formStatus, setFormStatus] = useState("watchlist");
+  const [formOpen, setFormOpen] = useState(false);
+  const addMovie = useAddMovie();
+  const updateMovie = useUpdateMovie();
+
+  const libraryByTmdb = useMemo(() => {
+    const map = new Map();
+    (library ?? []).forEach((m) => map.set(Number(m.tmdb_id), m));
+    return map;
+  }, [library]);
+
+  const { data, isFetching, isError, error } = useQuery({
+    queryKey: ["tmdb-search", debounced],
+    queryFn: () => search({ data: { query: debounced } }),
+    enabled: debounced.length > 1,
+    staleTime: 60_000,
+  });
+
+  const results = data?.results ?? [];
+
+  const openForm = (movie, status) => {
+    setSelected(movie);
+    setFormStatus(status);
+    setFormOpen(true);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={term}
+          onChange={(event) => setTerm(event.target.value)}
+          placeholder="Search any movie, e.g. Interstellar"
+          autoComplete="off"
+          enterKeyHint="search"
+          className="h-14 rounded-2xl pl-12 pr-11 text-base"
+          aria-label="Search movies"
+        />
+        {term ? (
+          <button
+            type="button"
+            onClick={() => setTerm("")}
+            aria-label="Clear search"
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-muted-foreground hover:bg-secondary"
+          >
+            <X className="size-4" />
+          </button>
+        ) : null}
+      </div>
+
+      {isFetching && debounced.length > 1 ? <ListSkeleton /> : null}
+
+      {isError ? (
+        <EmptyState
+          icon={Search}
+          title="Search unavailable"
+          description={error?.message || "We couldn't reach the movie database. Please try again."}
+        />
+      ) : null}
+
+      {!isFetching && !isError && debounced.length > 1 && results.length === 0 ? (
+        <EmptyState
+          icon={Search}
+          title="No movies found"
+          description={`Nothing matched “${debounced}”.`}
+        />
+      ) : null}
+
+      {!isFetching && debounced.length <= 1 ? (
+        <EmptyState
+          icon={Search}
+          title="Check before you watch"
+          description="Type a movie title to instantly see if it's already in your library."
+        />
+      ) : null}
+
+      {!isFetching && results.length > 0 ? (
+        <ul className="space-y-3">
+          {results.map((movie) => {
+            const existing = libraryByTmdb.get(Number(movie.tmdb_id));
+            return (
+              <li
+                key={movie.tmdb_id}
+                className="rounded-2xl border border-border bg-card p-3 shadow-card"
+              >
+                <div className="flex gap-3">
+                  <MoviePoster
+                    src={movie.poster_url}
+                    alt={movie.title}
+                    className="h-28 w-19 shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="line-clamp-2 text-sm font-semibold">{movie.title}</h3>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      {movie.release_year ? <span>{movie.release_year}</span> : null}
+                      {movie.tmdb_rating ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Star className="size-3" /> {movie.tmdb_rating}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                      {movie.overview}
+                    </p>
+                  </div>
+                </div>
+
+                {existing ? (
+                  <div className="mt-3 space-y-2 rounded-xl bg-surface p-3">
+                    {existing.status === "watched" ? (
+                      <>
+                        <p className="flex items-center gap-2 text-sm font-bold text-success">
+                          <CheckCircle2 className="size-4" /> ALREADY WATCHED
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {existing.watched_date
+                            ? `You watched this movie on ${formatDate(existing.watched_date)}.`
+                            : "This movie is already in your watched list."}
+                          {existing.personal_rating
+                            ? ` You rated it ${existing.personal_rating}/10.`
+                            : ""}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="flex items-center gap-2 text-sm font-bold text-primary">
+                          📋 This movie is on your watchlist.
+                        </p>
+                        <Button
+                          size="sm"
+                          className="h-11 w-full"
+                          onClick={() => openForm({ ...movie, ...existing }, "watched")}
+                        >
+                          <CheckCircle2 className="mr-2 size-4" /> Mark as watched
+                        </Button>
+                      </>
+                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      This movie is already in your library.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    <Badge variant="secondary" className="text-[11px]">
+                      Not watched yet
+                    </Badge>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="secondary"
+                        className="h-11"
+                        onClick={() => openForm(movie, "watchlist")}
+                      >
+                        <ListPlus className="mr-2 size-4" /> Watchlist
+                      </Button>
+                      <Button className="h-11" onClick={() => openForm(movie, "watched")}>
+                        <CheckCircle2 className="mr-2 size-4" /> Watched
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+
+      <MovieFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        movie={selected}
+        initialStatus={formStatus}
+        title={selected?.id ? "Mark as watched" : "Add to your library"}
+        submitLabel={selected?.id ? "Save" : "Add movie"}
+        lockStatus={Boolean(selected?.id)}
+        pending={addMovie.isPending || updateMovie.isPending}
+        onSubmit={(values) => {
+          if (selected?.id) {
+            updateMovie.mutate(
+              {
+                id: selected.id,
+                updates: { ...values, status: "watched" },
+                successMessage: `Marked "${selected.title}" as watched`,
+              },
+              { onSuccess: () => setFormOpen(false) },
+            );
+            return;
+          }
+          addMovie.mutate({ ...selected, ...values }, { onSuccess: () => setFormOpen(false) });
+        }}
+      />
+
+      {addMovie.isPending ? (
+        <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="size-3 animate-spin" /> Saving…
+        </p>
+      ) : null}
+    </div>
+  );
+}

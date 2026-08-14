@@ -47,7 +47,17 @@ export function MovieCard({ movie, onOpen }) {
       <div className="mt-2 space-y-1">
         <h3 className="line-clamp-1 text-sm font-semibold">{movie.title}</h3>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          {movie.media_type === "tv" ? (
+            <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-medium">
+              TV
+            </Badge>
+          ) : null}
           {movie.release_year ? <span>{movie.release_year}</span> : null}
+          {movie.media_type === "tv" && movie.number_of_seasons ? (
+            <span>
+              {movie.number_of_seasons} {movie.number_of_seasons === 1 ? "season" : "seasons"}
+            </span>
+          ) : null}
           {genre ? (
             <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-medium">
               {genre}
@@ -76,7 +86,13 @@ export function MovieRow({ movie, onOpen }) {
       <div className="min-w-0 flex-1 space-y-1">
         <h3 className="line-clamp-1 text-sm font-semibold">{movie.title}</h3>
         <p className="text-xs text-muted-foreground">
-          {[movie.release_year, movie.genres?.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
+          {[
+            movie.media_type === "tv" ? "TV" : null,
+            movie.release_year,
+            movie.genres?.slice(0, 2).join(", "),
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
         {movie.overview ? (
           <p className="line-clamp-2 text-xs text-muted-foreground">{movie.overview}</p>

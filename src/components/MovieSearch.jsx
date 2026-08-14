@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2, ListPlus, Loader2, Search, Star, X } from "lucide-react";
-import { searchMoviesTmdb } from "@/lib/tmdb.functions";
+import { searchMoviesTmdb, getBrowseRowsTmdb, ALL_GENRES } from "@/lib/tmdb.functions";
 import { useAddMovie, useMovies, useUpdateMovie } from "@/hooks/useMovies";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,10 @@ import { MoviePoster } from "@/components/MoviePoster";
 import { MovieFormDialog } from "@/components/MovieFormDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { ListSkeleton } from "@/components/LoadingState";
+import { MovieRow, MovieRowSkeleton } from "@/components/MovieRow";
+import { MovieGrid } from "@/components/MovieGrid";
 import { formatDate } from "@/components/MovieCard";
+import { cn } from "@/lib/utils";
 
 function useDebounced(value, delay = 350) {
   const [debounced, setDebounced] = useState(value);
@@ -25,7 +28,9 @@ function useDebounced(value, delay = 350) {
 export function MovieSearch({ initialQuery = "" }) {
   const [term, setTerm] = useState(initialQuery);
   const debounced = useDebounced(term.trim());
+  const [category, setCategory] = useState("all");
   const search = useServerFn(searchMoviesTmdb);
+  const browseRows = useServerFn(getBrowseRowsTmdb);
   const { data: library } = useMovies();
   const [selected, setSelected] = useState(null);
   const [formStatus, setFormStatus] = useState("watchlist");
@@ -47,11 +52,43 @@ export function MovieSearch({ initialQuery = "" }) {
   });
 
   const results = data?.results ?? [];
+  const isBrowsing = debounced.length <= 1;
+
+  const {
+    data: rowsData,
+    isFetching: rowsFetching,
+    isError: rowsError,
+  } = useQuery({
+    queryKey: ["tmdb-browse-rows"],
+    queryFn: () => browseRows(),
+    enabled: isBrowsing,
+    staleTime: 10 * 60_000,
+  });
+
+  const rows = rowsData?.rows ?? [];
+  const activeRow = rows.find((row) => row.key === category);
+  const activeGenre = ALL_GENRES.find((g) => g.key === category);
+  const activeCategoryTitle = activeRow?.title ?? activeGenre?.title ?? "";
+
+  const badgeForMovie = (movie) => {
+    const existing = libraryByTmdb.get(Number(movie.tmdb_id));
+    if (!existing) return null;
+    return existing.status === "watched" ? "Watched" : "In Watchlist";
+  };
 
   const openForm = (movie, status) => {
     setSelected(movie);
     setFormStatus(status);
     setFormOpen(true);
+  };
+
+  const handleRowSelect = (movie) => {
+    const existing = libraryByTmdb.get(Number(movie.tmdb_id));
+    if (existing) {
+      openForm({ ...movie, ...existing }, "watched");
+    } else {
+      openForm(movie, "watchlist");
+    }
   };
 
   return (
@@ -79,6 +116,26 @@ export function MovieSearch({ initialQuery = "" }) {
         ) : null}
       </div>
 
+      {isBrowsing ? (
+        <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
+          {[{ key: "all", title: "All" }, ...ALL_GENRES].map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={() => setCategory(chip.key)}
+              className={cn(
+                "shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors",
+                category === chip.key
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-secondary text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {chip.title}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {isFetching && debounced.length > 1 ? <ListSkeleton /> : null}
 
       {isError ? (
@@ -97,12 +154,51 @@ export function MovieSearch({ initialQuery = "" }) {
         />
       ) : null}
 
-      {!isFetching && debounced.length <= 1 ? (
-        <EmptyState
-          icon={Search}
-          title="Check before you watch"
-          description="Type a movie title to instantly see if it's already in your library."
-        />
+      {isBrowsing ? (
+        <div className="space-y-6">
+          {category === "all" && rowsFetching && rows.length === 0 ? (
+            <div className="space-y-6">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <MovieRowSkeleton key={i} />
+              ))}
+            </div>
+          ) : null}
+
+          {category === "all" && rowsError && rows.length === 0 ? (
+            <EmptyState
+              icon={Search}
+              title="Couldn't load suggestions"
+              description="Type a movie title above to search instead."
+            />
+          ) : null}
+
+          {category === "all" ? (
+            rows.map((row) => (
+              <MovieRow
+                key={row.key}
+                rowKey={row.key}
+                title={row.title}
+                initialMovies={row.movies}
+                initialHasMore={row.hasMore}
+                onSelect={handleRowSelect}
+                badgeFor={badgeForMovie}
+              />
+            ))
+          ) : (
+            <div>
+              <h2 className="mb-3 px-0.5 text-base font-bold tracking-tight">
+                {activeCategoryTitle}
+              </h2>
+              <MovieGrid
+                rowKey={category}
+                initialMovies={activeRow?.movies}
+                initialHasMore={activeRow?.hasMore}
+                onSelect={handleRowSelect}
+                badgeFor={badgeForMovie}
+              />
+            </div>
+          )}
+        </div>
       ) : null}
 
       {!isFetching && results.length > 0 ? (

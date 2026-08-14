@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RatingPicker } from "@/components/Rating";
 import { MoviePoster } from "@/components/MoviePoster";
+import { SeriesSeasons } from "@/components/SeriesSeasons";
 import { formatDate } from "@/components/MovieCard";
 import { cn } from "@/lib/utils";
 
@@ -94,6 +95,8 @@ export function MovieFormDialog({
             <MoviePoster src={movie.poster_url} alt={movie.title} className="h-32 w-22 shrink-0" />
             <p className="line-clamp-6 text-xs text-muted-foreground">{movie.overview}</p>
           </div>
+
+          {isTv ? <SeriesSeasons tmdbId={movie.tmdb_id} enabled={open} /> : null}
 
           {!lockStatus ? (
             <div className="grid grid-cols-2 gap-2">

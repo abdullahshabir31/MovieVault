@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2, ListPlus, Loader2, Search, Star, X } from "lucide-react";
 import { searchMoviesTmdb, getBrowseRowsTmdb, ALL_GENRES } from "@/lib/tmdb.functions";
@@ -28,6 +28,7 @@ function useDebounced(value, delay = 350) {
 export function MovieSearch({ initialQuery = "" }) {
   const [term, setTerm] = useState(initialQuery);
   const debounced = useDebounced(term.trim());
+  const [mediaFilter, setMediaFilter] = useState("movie");
   const [category, setCategory] = useState("all");
   const search = useServerFn(searchMoviesTmdb);
   const browseRows = useServerFn(getBrowseRowsTmdb);
@@ -37,6 +38,18 @@ export function MovieSearch({ initialQuery = "" }) {
   const [formOpen, setFormOpen] = useState(false);
   const addMovie = useAddMovie();
   const updateMovie = useUpdateMovie();
+
+  // A genre chip that has no TV equivalent (e.g. Horror) can't stay selected
+  // when switching to the Series view, so drop back to "All" whenever the
+  // Movies/Series toggle changes.
+  useEffect(() => {
+    setCategory("all");
+  }, [mediaFilter]);
+
+  const visibleGenres = useMemo(
+    () => (mediaFilter === "tv" ? ALL_GENRES.filter((g) => g.tvGenreId) : ALL_GENRES),
+    [mediaFilter],
+  );
 
   const libraryByTmdb = useMemo(() => {
     const map = new Map();
@@ -56,19 +69,46 @@ export function MovieSearch({ initialQuery = "" }) {
 
   const {
     data: rowsData,
+    fetchNextPage: fetchNextRowsPage,
+    hasNextPage: hasMoreRowsPage,
+    isFetchingNextPage: isFetchingMoreRows,
     isFetching: rowsFetching,
     isError: rowsError,
-  } = useQuery({
-    queryKey: ["tmdb-browse-rows"],
-    queryFn: () => browseRows(),
+  } = useInfiniteQuery({
+    queryKey: ["tmdb-browse-rows", mediaFilter],
+    queryFn: ({ pageParam }) => browseRows({ data: { mediaType: mediaFilter, offset: pageParam } }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => (lastPage.hasMoreRows ? lastPage.nextOffset : undefined),
     enabled: isBrowsing,
     staleTime: 10 * 60_000,
   });
 
-  const rows = rowsData?.rows ?? [];
+  const rows = useMemo(() => (rowsData?.pages ?? []).flatMap((p) => p.rows), [rowsData]);
   const activeRow = rows.find((row) => row.key === category);
   const activeGenre = ALL_GENRES.find((g) => g.key === category);
   const activeCategoryTitle = activeRow?.title ?? activeGenre?.title ?? "";
+
+  const rowsSentinelRef = useRef(null);
+  useEffect(() => {
+    const sentinel = rowsSentinelRef.current;
+    if (!sentinel || category !== "all" || !hasMoreRowsPage) return;
+
+    // rootMargin 0 on purpose: the sentinel should only trigger once it is
+    // actually on screen at the bottom of the scroll. A positive margin
+    // here fires early, and since a freshly-appended batch keeps the
+    // sentinel within that margin as soon as it renders, it kept re-firing
+    // on its own without the person scrolling any further.
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isFetchingMoreRows) {
+          fetchNextRowsPage();
+        }
+      },
+      { rootMargin: "0px", threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [category, hasMoreRowsPage, isFetchingMoreRows, fetchNextRowsPage]);
 
   const badgeForMovie = (movie) => {
     const existing = libraryByTmdb.get(`${movie.media_type ?? "movie"}:${Number(movie.tmdb_id)}`);
@@ -117,8 +157,39 @@ export function MovieSearch({ initialQuery = "" }) {
       </div>
 
       {isBrowsing ? (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setMediaFilter("movie")}
+            aria-pressed={mediaFilter === "movie"}
+            className={cn(
+              "rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors",
+              mediaFilter === "movie"
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-secondary text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Movies
+          </button>
+          <button
+            type="button"
+            onClick={() => setMediaFilter("tv")}
+            aria-pressed={mediaFilter === "tv"}
+            className={cn(
+              "rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors",
+              mediaFilter === "tv"
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-secondary text-muted-foreground hover:text-foreground",
+            )}
+          >
+            TV Series
+          </button>
+        </div>
+      ) : null}
+
+      {isBrowsing ? (
         <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
-          {[{ key: "all", title: "All" }, ...ALL_GENRES].map((chip) => (
+          {[{ key: "all", title: "All" }, ...visibleGenres].map((chip) => (
             <button
               key={chip.key}
               type="button"
@@ -182,6 +253,7 @@ export function MovieSearch({ initialQuery = "" }) {
                 initialHasMore={row.hasMore}
                 onSelect={handleRowSelect}
                 badgeFor={badgeForMovie}
+                mediaType={mediaFilter}
               />
             ))
           ) : (
@@ -195,9 +267,21 @@ export function MovieSearch({ initialQuery = "" }) {
                 initialHasMore={activeRow?.hasMore}
                 onSelect={handleRowSelect}
                 badgeFor={badgeForMovie}
+                mediaType={mediaFilter}
               />
             </div>
           )}
+
+          {category === "all" && hasMoreRowsPage ? (
+            <div ref={rowsSentinelRef} className="space-y-6 pb-2">
+              {isFetchingMoreRows ? (
+                <>
+                  <MovieRowSkeleton />
+                  <MovieRowSkeleton />
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MovieFormDialog } from "@/components/MovieFormDialog";
 import { Rating } from "@/components/Rating";
+import { SeriesSeasons } from "@/components/SeriesSeasons";
 import { formatDate } from "@/components/MovieCard";
 import { useDeleteMovie, useUpdateMovie } from "@/hooks/useMovies";
 
@@ -164,6 +165,12 @@ export function MovieDetails({ movie, open, onOpenChange }) {
                 <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
                   {movie.overview}
                 </p>
+              ) : null}
+
+              {isTv ? (
+                <div className="mt-4">
+                  <SeriesSeasons tmdbId={movie.tmdb_id} enabled={open} />
+                </div>
               ) : null}
 
               {movie.notes ? (

@@ -6,14 +6,22 @@ import { MoviePoster } from "@/components/MoviePoster";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getRowPageTmdb } from "@/lib/tmdb.functions";
 
-export function MovieRow({ rowKey, title, initialMovies, initialHasMore, onSelect, badgeFor }) {
+export function MovieRow({
+  rowKey,
+  title,
+  initialMovies,
+  initialHasMore,
+  onSelect,
+  badgeFor,
+  mediaType = "all",
+}) {
   const fetchPage = useServerFn(getRowPageTmdb);
   const sentinelRef = useRef(null);
   const scrollRef = useRef(null);
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ["tmdb-row", rowKey],
-    queryFn: ({ pageParam }) => fetchPage({ data: { rowKey, page: pageParam } }),
+    queryKey: ["tmdb-row", rowKey, mediaType],
+    queryFn: ({ pageParam }) => fetchPage({ data: { rowKey, page: pageParam, mediaType } }),
     initialPageParam: 2,
     getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
     initialData: { pages: [], pageParams: [] },

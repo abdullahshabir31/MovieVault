@@ -6,14 +6,21 @@ import { MoviePoster } from "@/components/MoviePoster";
 import { getRowPageTmdb } from "@/lib/tmdb.functions";
 import { MovieGridSkeleton } from "@/components/LoadingState";
 
-export function MovieGrid({ rowKey, initialMovies, initialHasMore, onSelect, badgeFor }) {
+export function MovieGrid({
+  rowKey,
+  initialMovies,
+  initialHasMore,
+  onSelect,
+  badgeFor,
+  mediaType = "all",
+}) {
   const fetchPage = useServerFn(getRowPageTmdb);
   const sentinelRef = useRef(null);
   const hasInitial = Array.isArray(initialMovies);
 
   const { data, fetchNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ["tmdb-row", rowKey],
-    queryFn: ({ pageParam }) => fetchPage({ data: { rowKey, page: pageParam } }),
+    queryKey: ["tmdb-row", rowKey, mediaType],
+    queryFn: ({ pageParam }) => fetchPage({ data: { rowKey, page: pageParam, mediaType } }),
     initialPageParam: hasInitial ? 2 : 1,
     getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
     initialData: hasInitial ? { pages: [], pageParams: [] } : undefined,

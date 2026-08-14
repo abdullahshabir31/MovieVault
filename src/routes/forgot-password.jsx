@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Loader2, MailCheck } from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+const RESEND_COOLDOWN_SECONDS = 30;
 
 export const Route = createFileRoute("/forgot-password")({
   head: () => ({
@@ -26,6 +29,14 @@ function ForgotPassword() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -44,6 +55,22 @@ function ForgotPassword() {
       return;
     }
     setSent(true);
+    setCooldown(RESEND_COOLDOWN_SECONDS);
+  };
+
+  const resend = async () => {
+    if (cooldown > 0 || resending) return;
+    setResending(true);
+    const { error: resendError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setResending(false);
+    if (resendError) {
+      toast.error(resendError.message || "Couldn't resend the email.");
+      return;
+    }
+    toast.success("Reset link resent.");
+    setCooldown(RESEND_COOLDOWN_SECONDS);
   };
 
   return (
@@ -66,6 +93,16 @@ function ForgotPassword() {
               <p className="mt-2 text-sm text-muted-foreground">
                 If an account exists for {email}, we've sent a link to reset your password.
               </p>
+              <Button
+                type="button"
+                variant="secondary"
+                className="mt-4 h-11 w-full"
+                disabled={cooldown > 0 || resending}
+                onClick={resend}
+              >
+                {resending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                {cooldown > 0 ? `Resend email (${cooldown}s)` : "Resend email"}
+              </Button>
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-4">

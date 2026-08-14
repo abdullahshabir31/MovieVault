@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Film, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -135,6 +135,8 @@ function LoginForm() {
   );
 }
 
+const RESEND_COOLDOWN_SECONDS = 30;
+
 function RegisterForm() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -143,6 +145,14 @@ function RegisterForm() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -174,6 +184,24 @@ function RegisterForm() {
       return;
     }
     setSent(true);
+    setCooldown(RESEND_COOLDOWN_SECONDS);
+  };
+
+  const resend = async () => {
+    if (cooldown > 0 || resending) return;
+    setResending(true);
+    const { error: resendError } = await supabase.auth.resend({
+      type: "signup",
+      email: email.trim(),
+      options: { emailRedirectTo: window.location.origin },
+    });
+    setResending(false);
+    if (resendError) {
+      toast.error(resendError.message || "Couldn't resend the email.");
+      return;
+    }
+    toast.success("Confirmation email resent.");
+    setCooldown(RESEND_COOLDOWN_SECONDS);
   };
 
   if (sent) {
@@ -185,6 +213,16 @@ function RegisterForm() {
           <span className="font-medium text-foreground">{email}</span>. Confirm it to activate your
           vault, then sign in.
         </p>
+        <Button
+          type="button"
+          variant="secondary"
+          className="mt-4 h-11 w-full"
+          disabled={cooldown > 0 || resending}
+          onClick={resend}
+        >
+          {resending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+          {cooldown > 0 ? `Resend email (${cooldown}s)` : "Resend email"}
+        </Button>
       </div>
     );
   }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, ListPlus, Loader2 } from "lucide-react";
+import { CalendarClock, CheckCircle2, ListPlus, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RatingPicker } from "@/components/Rating";
 import { MoviePoster } from "@/components/MoviePoster";
+import { formatDate } from "@/components/MovieCard";
 import { cn } from "@/lib/utils";
 
 function today() {
@@ -33,18 +34,20 @@ export function MovieFormDialog({
 }) {
   const [status, setStatus] = useState(initialStatus);
   const [rating, setRating] = useState(null);
-  const [watchedDate, setWatchedDate] = useState(today());
+  const [watchedDate, setWatchedDate] = useState("");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
     if (!open || !movie) return;
     setStatus(initialStatus);
     setRating(movie.personal_rating ?? null);
-    setWatchedDate(movie.watched_date ?? today());
+    setWatchedDate(movie.watched_date ?? "");
     setNotes(movie.notes ?? "");
   }, [open, movie, initialStatus]);
 
   if (!movie) return null;
+  const releaseDate = movie.release_date ? new Date(`${movie.release_date}T00:00:00`) : null;
+  const isUpcoming = releaseDate && !Number.isNaN(releaseDate.getTime()) && releaseDate > new Date();
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -65,6 +68,16 @@ export function MovieFormDialog({
             {movie.title}
             {movie.release_year ? ` (${movie.release_year})` : ""}
           </DialogDescription>
+          {isUpcoming ? (
+            <p className="flex items-center gap-1 text-xs font-medium text-amber-500">
+              <CalendarClock className="size-3.5" /> Upcoming · Releases{" "}
+              {formatDate(movie.release_date)}
+            </p>
+          ) : movie.release_date ? (
+            <p className="flex items-center gap-1 text-xs text-muted-foreground">
+              <CalendarClock className="size-3.5" /> Released {formatDate(movie.release_date)}
+            </p>
+          ) : null}
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -109,7 +122,7 @@ export function MovieFormDialog({
                 <RatingPicker value={rating} onChange={setRating} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="watched-date">Watched on</Label>
+                <Label htmlFor="watched-date">Watched on (optional)</Label>
                 <Input
                   id="watched-date"
                   type="date"

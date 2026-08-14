@@ -40,7 +40,7 @@ export function MovieSearch({ initialQuery = "" }) {
 
   const libraryByTmdb = useMemo(() => {
     const map = new Map();
-    (library ?? []).forEach((m) => map.set(Number(m.tmdb_id), m));
+    (library ?? []).forEach((m) => map.set(`${m.media_type ?? "movie"}:${Number(m.tmdb_id)}`, m));
     return map;
   }, [library]);
 
@@ -71,7 +71,7 @@ export function MovieSearch({ initialQuery = "" }) {
   const activeCategoryTitle = activeRow?.title ?? activeGenre?.title ?? "";
 
   const badgeForMovie = (movie) => {
-    const existing = libraryByTmdb.get(Number(movie.tmdb_id));
+    const existing = libraryByTmdb.get(`${movie.media_type ?? "movie"}:${Number(movie.tmdb_id)}`);
     if (!existing) return null;
     return existing.status === "watched" ? "Watched" : "In Watchlist";
   };
@@ -83,7 +83,7 @@ export function MovieSearch({ initialQuery = "" }) {
   };
 
   const handleRowSelect = (movie) => {
-    const existing = libraryByTmdb.get(Number(movie.tmdb_id));
+    const existing = libraryByTmdb.get(`${movie.media_type ?? "movie"}:${Number(movie.tmdb_id)}`);
     if (existing) {
       openForm({ ...movie, ...existing }, "watched");
     } else {
@@ -98,11 +98,11 @@ export function MovieSearch({ initialQuery = "" }) {
         <Input
           value={term}
           onChange={(event) => setTerm(event.target.value)}
-          placeholder="Search any movie, e.g. Interstellar"
+          placeholder="Search any movie or TV show"
           autoComplete="off"
           enterKeyHint="search"
           className="h-14 rounded-2xl pl-12 pr-11 text-base"
-          aria-label="Search movies"
+          aria-label="Search movies and TV shows"
         />
         {term ? (
           <button
@@ -149,7 +149,7 @@ export function MovieSearch({ initialQuery = "" }) {
       {!isFetching && !isError && debounced.length > 1 && results.length === 0 ? (
         <EmptyState
           icon={Search}
-          title="No movies found"
+          title="Nothing found"
           description={`Nothing matched “${debounced}”.`}
         />
       ) : null}
@@ -204,10 +204,10 @@ export function MovieSearch({ initialQuery = "" }) {
       {!isFetching && results.length > 0 ? (
         <ul className="space-y-3">
           {results.map((movie) => {
-            const existing = libraryByTmdb.get(Number(movie.tmdb_id));
+            const existing = libraryByTmdb.get(`${movie.media_type ?? "movie"}:${Number(movie.tmdb_id)}`);
             return (
               <li
-                key={movie.tmdb_id}
+                key={`${movie.media_type}-${movie.tmdb_id}`}
                 className="rounded-2xl border border-border bg-card p-3 shadow-card"
               >
                 <div className="flex gap-3">
@@ -219,7 +219,16 @@ export function MovieSearch({ initialQuery = "" }) {
                   <div className="min-w-0 flex-1">
                     <h3 className="line-clamp-2 text-sm font-semibold">{movie.title}</h3>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-medium">
+                        {movie.media_type === "tv" ? "TV Series" : "Movie"}
+                      </Badge>
                       {movie.release_year ? <span>{movie.release_year}</span> : null}
+                      {movie.media_type === "tv" && movie.number_of_seasons ? (
+                        <span>
+                          {movie.number_of_seasons}{" "}
+                          {movie.number_of_seasons === 1 ? "season" : "seasons"}
+                        </span>
+                      ) : null}
                       {movie.tmdb_rating ? (
                         <span className="inline-flex items-center gap-1">
                           <Star className="size-3" /> {movie.tmdb_rating}
@@ -241,8 +250,8 @@ export function MovieSearch({ initialQuery = "" }) {
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {existing.watched_date
-                            ? `You watched this movie on ${formatDate(existing.watched_date)}.`
-                            : "This movie is already in your watched list."}
+                            ? `You watched this on ${formatDate(existing.watched_date)}.`
+                            : "This is already in your watched list."}
                           {existing.personal_rating
                             ? ` You rated it ${existing.personal_rating}/10.`
                             : ""}
@@ -251,7 +260,7 @@ export function MovieSearch({ initialQuery = "" }) {
                     ) : (
                       <>
                         <p className="flex items-center gap-2 text-sm font-bold text-primary">
-                          📋 This movie is on your watchlist.
+                          📋 This is on your watchlist.
                         </p>
                         <Button
                           size="sm"
@@ -263,7 +272,7 @@ export function MovieSearch({ initialQuery = "" }) {
                       </>
                     )}
                     <p className="text-[11px] text-muted-foreground">
-                      This movie is already in your library.
+                      This is already in your library.
                     </p>
                   </div>
                 ) : (

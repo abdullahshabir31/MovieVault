@@ -10,6 +10,7 @@ import {
   Pencil,
   Star,
   Trash2,
+  Tv,
 } from "lucide-react";
 import {
   Dialog,
@@ -44,6 +45,7 @@ export function MovieDetails({ movie, open, onOpenChange }) {
 
   if (!movie) return null;
   const watched = movie.status === "watched";
+  const isTv = movie.media_type === "tv";
   const releaseDate = movie.release_date ? new Date(`${movie.release_date}T00:00:00`) : null;
   const isUpcoming = releaseDate && !Number.isNaN(releaseDate.getTime()) && releaseDate > new Date();
 
@@ -105,6 +107,11 @@ export function MovieDetails({ movie, open, onOpenChange }) {
                       <CalendarClock className="size-3" /> Upcoming
                     </span>
                   ) : null}
+                  {isTv ? (
+                    <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-1 text-[11px] font-semibold text-secondary-foreground">
+                      <Tv className="size-3" /> TV Series
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
@@ -122,6 +129,11 @@ export function MovieDetails({ movie, open, onOpenChange }) {
                   </span>
                 ) : null}
                 <Rating value={movie.personal_rating} size="lg" />
+                {isTv && movie.number_of_seasons ? (
+                  <span className="text-xs text-muted-foreground">
+                    {movie.number_of_seasons} {movie.number_of_seasons === 1 ? "season" : "seasons"}
+                  </span>
+                ) : null}
                 {watched && movie.watched_date ? (
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <CalendarCheck className="size-3.5" /> {formatDate(movie.watched_date)}
@@ -199,12 +211,12 @@ export function MovieDetails({ movie, open, onOpenChange }) {
         onOpenChange={setEditing}
         movie={movie}
         initialStatus={movie.status}
-        title="Edit movie"
+        title="Edit details"
         submitLabel="Save changes"
         pending={updateMovie.isPending}
         onSubmit={(values) => {
           updateMovie.mutate(
-            { id: movie.id, updates: values, successMessage: "Movie updated" },
+            { id: movie.id, updates: values, successMessage: "Updated" },
             { onSuccess: () => setEditing(false) },
           );
         }}
@@ -236,7 +248,7 @@ export function MovieDetails({ movie, open, onOpenChange }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{movie.title}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the movie, your rating and your notes from your library. This cannot be
+              This removes it, your rating and your notes from your library. This cannot be
               undone.
             </AlertDialogDescription>
           </AlertDialogHeader>

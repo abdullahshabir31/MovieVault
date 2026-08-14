@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarClock, CheckCircle2, ListPlus, Loader2 } from "lucide-react";
+import { CalendarClock, CheckCircle2, ListPlus, Loader2, Tv } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -46,6 +46,7 @@ export function MovieFormDialog({
   }, [open, movie, initialStatus]);
 
   if (!movie) return null;
+  const isTv = movie.media_type === "tv";
   const releaseDate = movie.release_date ? new Date(`${movie.release_date}T00:00:00`) : null;
   const isUpcoming = releaseDate && !Number.isNaN(releaseDate.getTime()) && releaseDate > new Date();
 
@@ -68,6 +69,14 @@ export function MovieFormDialog({
             {movie.title}
             {movie.release_year ? ` (${movie.release_year})` : ""}
           </DialogDescription>
+          {isTv ? (
+            <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              <Tv className="size-3.5" /> TV Series
+              {movie.number_of_seasons
+                ? ` · ${movie.number_of_seasons} ${movie.number_of_seasons === 1 ? "season" : "seasons"}`
+                : ""}
+            </p>
+          ) : null}
           {isUpcoming ? (
             <p className="flex items-center gap-1 text-xs font-medium text-amber-500">
               <CalendarClock className="size-3.5" /> Upcoming · Releases{" "}
@@ -140,7 +149,7 @@ export function MovieFormDialog({
             <Textarea
               id="notes"
               value={notes}
-              placeholder="Great movie. The ending was amazing."
+              placeholder="Great watch. The ending was amazing."
               onChange={(event) => setNotes(event.target.value)}
               rows={3}
             />

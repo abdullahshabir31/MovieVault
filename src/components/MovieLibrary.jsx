@@ -44,6 +44,7 @@ function sortMovies(list, sort) {
 export function MovieLibrary({ status, defaultSort = "recently_added", layout = "grid", empty }) {
   const { data: movies, isLoading } = useMovies();
   const [term, setTerm] = useState("");
+  const [type, setType] = useState("all");
   const [genre, setGenre] = useState("all");
   const [year, setYear] = useState("all");
   const [rating, setRating] = useState("all");
@@ -58,13 +59,14 @@ export function MovieLibrary({ status, defaultSort = "recently_added", layout = 
     const query = term.trim().toLowerCase();
     const list = scoped.filter((movie) => {
       if (query && !movie.title.toLowerCase().includes(query)) return false;
+      if (type !== "all" && (movie.media_type ?? "movie") !== type) return false;
       if (genre !== "all" && !(movie.genres ?? []).includes(genre)) return false;
       if (year !== "all" && String(movie.release_year) !== year) return false;
       if (rating !== "all" && (movie.personal_rating ?? 0) < Number(rating)) return false;
       return true;
     });
     return sortMovies(list, sort);
-  }, [scoped, term, genre, year, rating, sort]);
+  }, [scoped, term, type, genre, year, rating, sort]);
 
   const showFilters = scoped.length > 0;
   const selectedLive = selected ? ((movies ?? []).find((m) => m.id === selected.id) ?? null) : null;
@@ -96,6 +98,17 @@ export function MovieLibrary({ status, defaultSort = "recently_added", layout = 
                     {label}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={type} onValueChange={setType}>
+              <SelectTrigger className="h-10 w-auto shrink-0 rounded-full">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Movies & TV</SelectItem>
+                <SelectItem value="movie">Movies</SelectItem>
+                <SelectItem value="tv">TV Shows</SelectItem>
               </SelectContent>
             </Select>
 
@@ -150,7 +163,7 @@ export function MovieLibrary({ status, defaultSort = "recently_added", layout = 
         empty
       ) : filtered.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-border bg-surface/60 p-6 text-center text-sm text-muted-foreground">
-          No movies found. Try a different search or filter.
+          Nothing found. Try a different search or filter.
         </p>
       ) : layout === "list" ? (
         <ul className="space-y-3">

@@ -19,7 +19,7 @@ export function AppShell({ title, subtitle, children, action }) {
 
   return (
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-40 border-b border-border glass-panel">
+      <header className="safe-top sticky top-0 z-40 border-b border-border glass-panel">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
           <Link to="/dashboard" className="flex items-center gap-2 font-semibold">
             <span className="grid size-8 place-items-center rounded-xl bg-primary text-primary-foreground">

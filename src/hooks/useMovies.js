@@ -44,6 +44,7 @@ export function useAddMovie() {
         poster_url: movie.poster_url ?? null,
         backdrop_url: movie.backdrop_url ?? null,
         release_year: movie.release_year ?? null,
+        release_date: movie.release_date ?? null,
         overview: movie.overview ?? null,
         genres: movie.genres ?? [],
         tmdb_rating: movie.tmdb_rating ?? null,

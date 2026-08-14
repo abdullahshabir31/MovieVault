@@ -40,6 +40,7 @@ export function useAddMovie() {
       const payload = {
         user_id: userData.user.id,
         tmdb_id: movie.tmdb_id,
+        media_type: movie.media_type ?? "movie",
         title: movie.title,
         poster_url: movie.poster_url ?? null,
         backdrop_url: movie.backdrop_url ?? null,
@@ -48,6 +49,7 @@ export function useAddMovie() {
         overview: movie.overview ?? null,
         genres: movie.genres ?? [],
         tmdb_rating: movie.tmdb_rating ?? null,
+        number_of_seasons: movie.number_of_seasons ?? null,
         status: movie.status,
         personal_rating: movie.status === "watched" ? (movie.personal_rating ?? null) : null,
         watched_date: movie.status === "watched" ? (movie.watched_date ?? null) : null,
@@ -58,7 +60,7 @@ export function useAddMovie() {
       if (error) {
         if (error.code === "23505" || error.code === "23514" || error.code === "23000") throw error;
         if (String(error.message).includes("duplicate key")) {
-          throw new Error("This movie is already in your library.");
+          throw new Error("This title is already in your library.");
         }
         throw error;
       }

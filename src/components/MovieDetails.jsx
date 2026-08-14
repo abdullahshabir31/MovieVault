@@ -1,6 +1,8 @@
 import { useState } from "react";
 import {
   CalendarCheck,
+  CalendarClock,
+  CalendarDays,
   CheckCircle2,
   Film,
   ListPlus,
@@ -42,6 +44,8 @@ export function MovieDetails({ movie, open, onOpenChange }) {
 
   if (!movie) return null;
   const watched = movie.status === "watched";
+  const releaseDate = movie.release_date ? new Date(`${movie.release_date}T00:00:00`) : null;
+  const isUpcoming = releaseDate && !Number.isNaN(releaseDate.getTime()) && releaseDate > new Date();
 
   const moveToWatchlist = () => {
     updateMovie.mutate({
@@ -96,6 +100,11 @@ export function MovieDetails({ movie, open, onOpenChange }) {
                       </>
                     )}
                   </span>
+                  {isUpcoming ? (
+                    <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-1 text-[11px] font-semibold text-amber-500">
+                      <CalendarClock className="size-3" /> Upcoming
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
@@ -116,6 +125,15 @@ export function MovieDetails({ movie, open, onOpenChange }) {
                 {watched && movie.watched_date ? (
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <CalendarCheck className="size-3.5" /> {formatDate(movie.watched_date)}
+                  </span>
+                ) : null}
+                {isUpcoming ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-500">
+                    <CalendarClock className="size-3.5" /> Releases {formatDate(movie.release_date)}
+                  </span>
+                ) : movie.release_date ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <CalendarDays className="size-3.5" /> {formatDate(movie.release_date)}
                   </span>
                 ) : null}
               </div>

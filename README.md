@@ -220,15 +220,11 @@ git clone https://github.com/abdullahshabir31/MovieVault.git
 cd MovieVault
 ```
 
----
-
 ## 2. Install Dependencies
 
 ```bash
 npm install
 ```
-
----
 
 ## 3. Configure Environment Variables
 
@@ -248,8 +244,6 @@ TMDB_API_KEY=
 ```
 
 > ⚠️ Never commit your `.env` file or expose your Supabase Service Role Key.
-
----
 
 ## 4. Start Development Server
 

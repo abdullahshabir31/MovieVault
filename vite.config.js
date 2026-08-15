@@ -43,6 +43,14 @@ export default defineConfig({
         globDirectory: ".output/public",
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest}"],
       },
+      // vite-plugin-pwa serves NO service worker at all under `vite dev` by
+      // default — it only kicks in on a production build/preview. Without
+      // this, the Notifications toggle would stay stuck disabled for anyone
+      // testing on `npm run dev`, same as the missing-registration bug.
+      devOptions: {
+        enabled: true,
+        type: "module",
+      },
     }),
   ],
 });

@@ -1,1 +1,4 @@
-project_id = "qxstcgyxuvnqsenevwii"
+project_id = "ynylixhzgeruilfhmicj"
+
+[functions.check-new-releases]
+verify_jwt = false

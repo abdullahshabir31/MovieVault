@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { CheckCircle2, ListPlus, Loader2, Search, Star, X } from "lucide-react";
+import { CheckCircle2, Film, ListPlus, Loader2, Search, Star, X } from "lucide-react";
 import { searchMoviesTmdb, getBrowseRowsTmdb, ALL_GENRES } from "@/lib/tmdb.functions";
 import { useAddMovie, useMovies, useUpdateMovie } from "@/hooks/useMovies";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,24 @@ function useDebounced(value, delay = 350) {
     return () => clearTimeout(timer);
   }, [value, delay]);
   return debounced;
+}
+
+// Classic edit-distance so misspelled suggestions ("recher") can still be
+// matched and ranked against the correct title ("Reacher").
+function levenshtein(a, b) {
+  const s = (a || "").toLowerCase();
+  const t = (b || "").toLowerCase();
+  const dp = Array.from({ length: s.length + 1 }, (_, i) => [i, ...new Array(t.length).fill(0)]);
+  for (let j = 0; j <= t.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= s.length; i++) {
+    for (let j = 1; j <= t.length; j++) {
+      dp[i][j] =
+        s[i - 1] === t[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  return dp[s.length][t.length];
 }
 
 export function MovieSearch({ initialQuery = "" }) {
@@ -66,6 +84,34 @@ export function MovieSearch({ initialQuery = "" }) {
 
   const results = data?.results ?? [];
   const isBrowsing = debounced.length <= 1;
+
+  // Lightweight autocomplete dropdown, shown right under the search bar as
+  // the person types (like a Google-style suggestion list), with poster
+  // thumbnails. If the exact spelling gets no hits, we retry with the query
+  // trimmed a character at a time — this recovers titles even when the typo
+  // is deep in the word (e.g. "recher" for "Reacher") — then rank whatever
+  // comes back by how close each title's spelling is to what was typed, so
+  // the best match always sits at the top.
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const { data: suggestions, isFetching: suggestFetching } = useQuery({
+    queryKey: ["tmdb-suggest", debounced],
+    queryFn: async () => {
+      let query = debounced;
+      let json = await search({ data: { query } });
+      let attempts = 0;
+      while ((!json.results || json.results.length === 0) && query.length > 3 && attempts < 4) {
+        query = query.slice(0, -1);
+        json = await search({ data: { query } });
+        attempts++;
+      }
+      return (json.results ?? [])
+        .map((movie) => ({ ...movie, _dist: levenshtein(movie.title, debounced) }))
+        .sort((a, b) => a._dist - b._dist)
+        .slice(0, 6);
+    },
+    enabled: debounced.length > 1 && suggestOpen,
+    staleTime: 30_000,
+  });
 
   const {
     data: rowsData,
@@ -122,6 +168,11 @@ export function MovieSearch({ initialQuery = "" }) {
     setFormOpen(true);
   };
 
+  const handleSelectSuggestion = (movie) => {
+    setTerm(movie.title);
+    setSuggestOpen(false);
+  };
+
   const handleRowSelect = (movie) => {
     const existing = libraryByTmdb.get(`${movie.media_type ?? "movie"}:${Number(movie.tmdb_id)}`);
     if (existing) {
@@ -137,22 +188,101 @@ export function MovieSearch({ initialQuery = "" }) {
         <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={term}
-          onChange={(event) => setTerm(event.target.value)}
+          onChange={(event) => {
+            setTerm(event.target.value);
+            setSuggestOpen(true);
+          }}
+          onFocus={() => setSuggestOpen(true)}
+          onBlur={() => setSuggestOpen(false)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setSuggestOpen(false);
+            // Enter commits the typed query: the full results list below is
+            // already live (it tracks the same debounced term), so all this
+            // needs to do is dismiss the suggestion dropdown and drop the
+            // keyboard on mobile.
+            if (event.key === "Enter") {
+              event.preventDefault();
+              setSuggestOpen(false);
+              event.currentTarget.blur();
+            }
+          }}
           placeholder="Search any movie or TV show"
           autoComplete="off"
           enterKeyHint="search"
           className="h-14 rounded-2xl pl-12 pr-11 text-base"
           aria-label="Search movies and TV shows"
+          role="combobox"
+          aria-expanded={suggestOpen && term.trim().length > 1}
+          aria-autocomplete="list"
         />
         {term ? (
           <button
             type="button"
-            onClick={() => setTerm("")}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              setTerm("");
+              setSuggestOpen(false);
+            }}
             aria-label="Clear search"
             className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-muted-foreground hover:bg-secondary"
           >
             <X className="size-4" />
           </button>
+        ) : null}
+
+        {suggestOpen && term.trim().length > 1 ? (
+          <div
+            role="listbox"
+            className="absolute inset-x-0 top-[calc(100%+6px)] z-30 max-h-96 overflow-y-auto rounded-2xl border border-border bg-popover shadow-glow"
+          >
+            {suggestFetching && !suggestions ? (
+              <div className="flex items-center gap-2 px-4 py-4 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" /> Searching…
+              </div>
+            ) : suggestions && suggestions.length > 0 ? (
+              <ul className="divide-y divide-border">
+                {suggestions.map((movie) => (
+                  <li key={`suggest-${movie.media_type}-${movie.tmdb_id}`}>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        handleSelectSuggestion(movie);
+                      }}
+                      className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-secondary"
+                    >
+                      <div className="h-14 w-10 shrink-0 overflow-hidden rounded-md bg-secondary">
+                        {movie.poster_url ? (
+                          <img
+                            src={movie.poster_url}
+                            alt=""
+                            className="size-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="grid size-full place-items-center text-muted-foreground">
+                            <Film className="size-4" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-1 text-sm font-medium">{movie.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {[movie.media_type === "tv" ? "TV Series" : "Movie", movie.release_year]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : !suggestFetching ? (
+              <p className="px-4 py-4 text-sm text-muted-foreground">
+                Nothing matched “{term.trim()}”.
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -288,7 +418,9 @@ export function MovieSearch({ initialQuery = "" }) {
       {!isFetching && results.length > 0 ? (
         <ul className="space-y-3">
           {results.map((movie) => {
-            const existing = libraryByTmdb.get(`${movie.media_type ?? "movie"}:${Number(movie.tmdb_id)}`);
+            const existing = libraryByTmdb.get(
+              `${movie.media_type ?? "movie"}:${Number(movie.tmdb_id)}`,
+            );
             return (
               <li
                 key={`${movie.media_type}-${movie.tmdb_id}`}

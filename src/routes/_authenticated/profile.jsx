@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Clapperboard, Film, KeyRound, Loader2, Star, Upload } from "lucide-react";
+import {
+  Bell,
+  CheckCircle2,
+  Clapperboard,
+  Film,
+  KeyRound,
+  Loader2,
+  Star,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { getPasswordError } from "@/lib/password";
@@ -11,10 +20,42 @@ import { PasswordInput } from "@/components/PasswordInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { FullPageLoader } from "@/components/LoadingState";
 import { computeStats, useMovies } from "@/hooks/useMovies";
 import { useAuth } from "@/hooks/useAuth";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
+
+function NotificationsSection() {
+  const { supported, subscribed, checking, pending, enable, disable } = usePushNotifications();
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-border bg-card p-5 shadow-card">
+      <h2 className="flex items-center gap-2 text-lg font-semibold">
+        <Bell className="size-5" /> Notifications
+      </h2>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium">New sequel & season alerts</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Get notified on this device when a new sequel or season of something you've watched
+            comes out — even when MovieVault isn't open.
+          </p>
+          {!supported ? (
+            <p className="mt-1 text-xs text-muted-foreground">Not supported in this browser.</p>
+          ) : null}
+        </div>
+        <Switch
+          checked={subscribed}
+          disabled={!supported || checking || pending}
+          onCheckedChange={(checked) => (checked ? enable() : disable())}
+          aria-label="Toggle push notifications"
+        />
+      </div>
+    </div>
+  );
+}
 
 export const Route = createFileRoute("/_authenticated/profile")({
   head: () => ({
@@ -340,6 +381,8 @@ function ProfilePage() {
         </form>
 
         <ChangePasswordSection userEmail={profile?.email || user?.email} />
+
+        <NotificationsSection />
       </div>
 
       <AvatarCropDialog

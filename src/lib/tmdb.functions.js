@@ -33,7 +33,8 @@ async function tmdbFetch(path, params) {
 // (e.g. results from /movie/popular or /tv/popular, which are type-specific
 // endpoints and don't echo media_type back).
 function mapItem(m, mediaTypeHint) {
-  const mediaType = m.media_type || mediaTypeHint || (m.first_air_date !== undefined ? "tv" : "movie");
+  const mediaType =
+    m.media_type || mediaTypeHint || (m.first_air_date !== undefined ? "tv" : "movie");
   const isTv = mediaType === "tv";
   const releaseDate = isTv ? m.first_air_date : m.release_date;
   return {
@@ -87,7 +88,10 @@ export const searchMoviesTmdb = createServerFn({ method: "GET" })
 export const getMovieTmdb = createServerFn({ method: "GET" })
   .validator((input) =>
     z
-      .object({ tmdbId: z.number().int().positive(), mediaType: z.enum(["movie", "tv"]).default("movie") })
+      .object({
+        tmdbId: z.number().int().positive(),
+        mediaType: z.enum(["movie", "tv"]).default("movie"),
+      })
       .parse(input),
   )
   .handler(async ({ data }) => {
@@ -122,7 +126,8 @@ export const getTvSeasonTmdb = createServerFn({ method: "GET" })
         still_url: e.still_path ? `${IMG}/w300${e.still_path}` : null,
         air_date: e.air_date || null,
         runtime: typeof e.runtime === "number" ? e.runtime : null,
-        vote_average: typeof e.vote_average === "number" ? Math.round(e.vote_average * 10) / 10 : null,
+        vote_average:
+          typeof e.vote_average === "number" ? Math.round(e.vote_average * 10) / 10 : null,
       }));
     return { episodes };
   });
@@ -397,9 +402,7 @@ export const getBrowseRowsTmdb = createServerFn({ method: "GET" })
   )
   .handler(async ({ data }) => {
     const slice = ROW_DEFS.slice(data.offset, data.offset + ROWS_PAGE_SIZE);
-    const pages = await Promise.all(
-      slice.map((rowDef) => fetchRowPage(rowDef, 1, data.mediaType)),
-    );
+    const pages = await Promise.all(slice.map((rowDef) => fetchRowPage(rowDef, 1, data.mediaType)));
 
     const rows = slice
       .map((rowDef, i) => ({

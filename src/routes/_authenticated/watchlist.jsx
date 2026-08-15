@@ -1,9 +1,13 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Clapperboard, Search } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { MovieLibrary } from "@/components/MovieLibrary";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { UpcomingReleases } from "@/components/UpcomingReleases";
+import { MovieDetails } from "@/components/MovieDetails";
+import { useMovies } from "@/hooks/useMovies";
 
 export const Route = createFileRoute("/_authenticated/watchlist")({
   head: () => ({
@@ -21,26 +25,41 @@ export const Route = createFileRoute("/_authenticated/watchlist")({
 });
 
 function WatchlistPage() {
+  const { data: movies } = useMovies();
+  const [upcomingSelected, setUpcomingSelected] = useState(null);
+  const selectedLive = upcomingSelected
+    ? ((movies ?? []).find((m) => m.id === upcomingSelected.id) ?? null)
+    : null;
+
   return (
     <AppShell title="Watchlist" subtitle="Saved for later — tap a movie to mark it watched.">
-      <MovieLibrary
-        status="watchlist"
-        defaultSort="recently_added"
-        layout="list"
-        empty={
-          <EmptyState
-            icon={Clapperboard}
-            title="Your watchlist is empty"
-            description="Add movies you want to watch later."
-            action={
-              <Button asChild className="h-12">
-                <Link to="/search">
-                  <Search className="mr-2 size-4" /> Find movies
-                </Link>
-              </Button>
-            }
-          />
-        }
+      <div className="space-y-6">
+        <UpcomingReleases movies={movies} onSelect={setUpcomingSelected} />
+        <MovieLibrary
+          status="watchlist"
+          defaultSort="recently_added"
+          layout="list"
+          empty={
+            <EmptyState
+              icon={Clapperboard}
+              title="Your watchlist is empty"
+              description="Add movies you want to watch later."
+              action={
+                <Button asChild className="h-12">
+                  <Link to="/search">
+                    <Search className="mr-2 size-4" /> Find movies
+                  </Link>
+                </Button>
+              }
+            />
+          }
+        />
+      </div>
+
+      <MovieDetails
+        movie={selectedLive}
+        open={Boolean(selectedLive)}
+        onOpenChange={() => setUpcomingSelected(null)}
       />
     </AppShell>
   );

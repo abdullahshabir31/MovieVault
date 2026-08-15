@@ -49,7 +49,8 @@ export function MovieFormDialog({
   if (!movie) return null;
   const isTv = movie.media_type === "tv";
   const releaseDate = movie.release_date ? new Date(`${movie.release_date}T00:00:00`) : null;
-  const isUpcoming = releaseDate && !Number.isNaN(releaseDate.getTime()) && releaseDate > new Date();
+  const isUpcoming =
+    releaseDate && !Number.isNaN(releaseDate.getTime()) && releaseDate > new Date();
 
   const handleSubmit = (event) => {
     event.preventDefault();

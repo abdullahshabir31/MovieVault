@@ -77,7 +77,10 @@ export function InstallPrompt() {
           <img src="/icons/icon-192.png" alt="MovieVault" className="size-full object-cover" />
         </span>
 
-        <h2 id="install-prompt-title" className="mt-4 font-display text-lg font-semibold tracking-tight text-foreground">
+        <h2
+          id="install-prompt-title"
+          className="mt-4 font-display text-lg font-semibold tracking-tight text-foreground"
+        >
           Get the MovieVault App
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">

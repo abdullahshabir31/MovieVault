@@ -1,8 +1,53 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { getMovieSequelsTmdb, getTvSeasonCountsTmdb } from "@/lib/tmdb.functions";
+import {
+  addNewSequelsToWatchlist,
+  moveNewSeasonsToWatchlist,
+  notifyAddedSequels,
+  notifyMovedSeasons,
+  dismissSequel,
+} from "@/lib/autoWatchlist";
 
 const KEY = ["movies"];
+
+// After something is marked "watched" (whether that's a fresh add or an
+// update to an existing library item), immediately check TMDB for parts of
+// that same franchise/show that are already out and not yet in the
+// library, and drop them on the watchlist right away — instead of waiting
+// for the once-per-session background sweep on the next app load.
+async function checkAutoWatchlistFor(movie, { fetchSequels, fetchCounts, queryClient }) {
+  if (!movie || movie.status !== "watched") return;
+  const mediaType = movie.media_type ?? "movie";
+
+  if (mediaType === "movie") {
+    const library = queryClient.getQueryData(KEY) ?? [];
+    const added = await addNewSequelsToWatchlist({
+      fetchSequels,
+      tmdbIdsToCheck: [Number(movie.tmdb_id)],
+      library,
+    });
+    if (added.length > 0) {
+      queryClient.invalidateQueries({ queryKey: KEY });
+      notifyAddedSequels(added);
+    }
+    return;
+  }
+
+  if (
+    mediaType === "tv" &&
+    typeof movie.number_of_seasons === "number" &&
+    movie.number_of_seasons > 0
+  ) {
+    const moved = await moveNewSeasonsToWatchlist({ fetchCounts, showsToCheck: [movie] });
+    if (moved.length > 0) {
+      queryClient.invalidateQueries({ queryKey: KEY });
+      notifyMovedSeasons(moved);
+    }
+  }
+}
 
 export function useMovies() {
   return useQuery({
@@ -32,6 +77,9 @@ function useInvalidate() {
 
 export function useAddMovie() {
   const invalidate = useInvalidate();
+  const queryClient = useQueryClient();
+  const fetchSequels = useServerFn(getMovieSequelsTmdb);
+  const fetchCounts = useServerFn(getTvSeasonCountsTmdb);
   return useMutation({
     mutationFn: async (movie) => {
       const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -58,8 +106,11 @@ export function useAddMovie() {
 
       const { data, error } = await supabase.from("movies").insert(payload).select().single();
       if (error) {
-        if (error.code === "23505" || error.code === "23514" || error.code === "23000") throw error;
-        if (String(error.message).includes("duplicate key")) {
+        // 23505 is Postgres's own code for "unique constraint violated" —
+        // that's exactly the duplicate-title case, so it has to be checked
+        // (and given the friendly message) before the generic passthrough
+        // below, not after, or the raw Postgres error reaches the user.
+        if (error.code === "23505" || String(error.message).includes("duplicate key")) {
           throw new Error("This title is already in your library.");
         }
         throw error;
@@ -73,6 +124,7 @@ export function useAddMovie() {
           ? `Marked "${data.title}" as watched`
           : `Added "${data.title}" to your watchlist`,
       );
+      checkAutoWatchlistFor(data, { fetchSequels, fetchCounts, queryClient });
     },
     onError: (error) => toast.error(error.message || "Could not add the movie."),
   });
@@ -80,6 +132,9 @@ export function useAddMovie() {
 
 export function useUpdateMovie() {
   const invalidate = useInvalidate();
+  const queryClient = useQueryClient();
+  const fetchSequels = useServerFn(getMovieSequelsTmdb);
+  const fetchCounts = useServerFn(getTvSeasonCountsTmdb);
   return useMutation({
     mutationFn: async ({ id, updates }) => {
       const { data, error } = await supabase
@@ -91,9 +146,15 @@ export function useUpdateMovie() {
       if (error) throw error;
       return data;
     },
-    onSuccess: (_data, vars) => {
+    onSuccess: (data, vars) => {
       invalidate();
       toast.success(vars.successMessage || "Movie updated");
+      // Only worth checking when this update just moved something *into*
+      // "watched" — editing notes/rating on an already-watched item, or
+      // moving something back to the watchlist, doesn't need a re-check.
+      if (vars.updates?.status === "watched") {
+        checkAutoWatchlistFor(data, { fetchSequels, fetchCounts, queryClient });
+      }
     },
     onError: (error) => toast.error(error.message || "Could not update the movie."),
   });
@@ -102,17 +163,81 @@ export function useUpdateMovie() {
 export function useDeleteMovie() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: async (id) => {
+    mutationFn: async (movie) => {
+      const id = typeof movie === "string" ? movie : movie.id;
       const { error } = await supabase.from("movies").delete().eq("id", id);
       if (error) throw error;
-      return id;
+      return movie;
     },
-    onSuccess: () => {
+    onSuccess: (movie) => {
       invalidate();
       toast.success("Movie removed from your library");
+      // Only titles still sitting on the watchlist are ones the
+      // auto-add/auto-move checks could ever bring back — a watched title
+      // being deleted was never a candidate for that in the first place.
+      if (typeof movie === "object" && movie?.status === "watchlist") {
+        dismissSequel({ tmdbId: Number(movie.tmdb_id), mediaType: movie.media_type ?? "movie" });
+      }
     },
     onError: (error) => toast.error(error.message || "Could not delete the movie."),
   });
+}
+
+// Pending deletes live outside React state (module-level) so they survive
+// the toast's owning component unmounting — e.g. the user navigates away
+// from the page the toast was triggered on before the 5s window is up.
+const UNDO_WINDOW_MS = 5000;
+const pendingDeletes = new Map(); // id -> timeoutId
+
+export function useDeleteMovieWithUndo() {
+  const invalidate = useInvalidate();
+  const queryClient = useQueryClient();
+
+  const commitDelete = async (movie) => {
+    const id = typeof movie === "string" ? movie : movie.id;
+    const { error } = await supabase.from("movies").delete().eq("id", id);
+    if (error) {
+      // The optimistic removal already happened — bring it back so the
+      // library reflects reality instead of silently staying wrong.
+      invalidate();
+      toast.error(error.message || "Could not delete the movie.");
+      return;
+    }
+    if (typeof movie === "object" && movie?.status === "watchlist") {
+      dismissSequel({ tmdbId: Number(movie.tmdb_id), mediaType: movie.media_type ?? "movie" });
+    }
+  };
+
+  return (movie) => {
+    const id = typeof movie === "string" ? movie : movie.id;
+
+    // Optimistically drop it from the cached list right away so the UI
+    // updates instantly, without waiting on the network delete.
+    queryClient.setQueryData(KEY, (current) => (current ?? []).filter((m) => m.id !== id));
+
+    const timeoutId = setTimeout(() => {
+      pendingDeletes.delete(id);
+      commitDelete(movie);
+    }, UNDO_WINDOW_MS);
+    pendingDeletes.set(id, timeoutId);
+
+    toast(`Removed "${movie.title}"`, {
+      duration: UNDO_WINDOW_MS,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          const pending = pendingDeletes.get(id);
+          if (pending) {
+            clearTimeout(pending);
+            pendingDeletes.delete(id);
+          }
+          // Nothing was ever deleted server-side, so just restore the
+          // cached list to what the server actually has.
+          invalidate();
+        },
+      },
+    });
+  };
 }
 
 export function computeStats(movies) {

@@ -19,36 +19,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MoviePoster } from "@/components/MoviePoster";
 import { MovieFormDialog } from "@/components/MovieFormDialog";
 import { Rating } from "@/components/Rating";
 import { SeriesSeasons } from "@/components/SeriesSeasons";
 import { formatDate } from "@/components/MovieCard";
-import { useDeleteMovie, useUpdateMovie } from "@/hooks/useMovies";
+import { useDeleteMovieWithUndo, useUpdateMovie } from "@/hooks/useMovies";
 
 export function MovieDetails({ movie, open, onOpenChange }) {
   const [editing, setEditing] = useState(false);
   const [markWatched, setMarkWatched] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const updateMovie = useUpdateMovie();
-  const deleteMovie = useDeleteMovie();
+  const deleteMovieWithUndo = useDeleteMovieWithUndo();
 
   if (!movie) return null;
   const watched = movie.status === "watched";
   const isTv = movie.media_type === "tv";
   const releaseDate = movie.release_date ? new Date(`${movie.release_date}T00:00:00`) : null;
-  const isUpcoming = releaseDate && !Number.isNaN(releaseDate.getTime()) && releaseDate > new Date();
+  const isUpcoming =
+    releaseDate && !Number.isNaN(releaseDate.getTime()) && releaseDate > new Date();
 
   const moveToWatchlist = () => {
     updateMovie.mutate({
@@ -81,10 +72,10 @@ export function MovieDetails({ movie, open, onOpenChange }) {
             <div className="-mt-14 px-5 pb-6">
               <div className="flex items-end gap-3">
                 {movie.poster_url ? (
-                  <img
+                  <MoviePoster
                     src={movie.poster_url}
-                    alt={`${movie.title} poster`}
-                    className="h-32 w-22 shrink-0 rounded-xl object-cover shadow-card"
+                    alt={movie.title}
+                    className="h-32 w-22 shrink-0 rounded-xl shadow-card"
                   />
                 ) : null}
                 <div className="pb-1">
@@ -203,7 +194,10 @@ export function MovieDetails({ movie, open, onOpenChange }) {
                 <Button
                   variant="ghost"
                   className="h-12 text-destructive hover:text-destructive sm:col-span-2"
-                  onClick={() => setConfirmDelete(true)}
+                  onClick={() => {
+                    deleteMovieWithUndo(movie);
+                    onOpenChange(false);
+                  }}
                 >
                   <Trash2 className="mr-2 size-4" /> Delete from library
                 </Button>
@@ -249,33 +243,6 @@ export function MovieDetails({ movie, open, onOpenChange }) {
           );
         }}
       />
-
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete “{movie.title}”?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes it, your rating and your notes from your library. This cannot be
-              undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() =>
-                deleteMovie.mutate(movie.id, {
-                  onSuccess: () => {
-                    setConfirmDelete(false);
-                    onOpenChange(false);
-                  },
-                })
-              }
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

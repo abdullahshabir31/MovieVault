@@ -93,7 +93,7 @@ password reset and OAuth.
 
 ## 6. Create the avatars storage bucket
 
-The SQL migration adds RLS *policies* for a bucket named `avatars`, but the
+The SQL migration adds RLS _policies_ for a bucket named `avatars`, but the
 bucket itself has to be created through the dashboard or API:
 
 **Storage → New bucket** → name it exactly `avatars` → set it however you'd

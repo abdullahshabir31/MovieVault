@@ -38,3 +38,5 @@ src/routeTree.gen.*
 .env
 .env.local
 .env.*.local
+
+supabase/.temp/

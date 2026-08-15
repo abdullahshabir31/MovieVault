@@ -10,7 +10,12 @@ export function MoviePoster({ src, alt, className }) {
       )}
     >
       {src ? (
-        <img src={src} alt={`${alt} poster`} loading="lazy" className="size-full object-cover" />
+        <img
+          src={src}
+          alt={`${alt} poster`}
+          loading="lazy"
+          className="absolute inset-0 size-full object-cover object-top"
+        />
       ) : (
         <div className="grid size-full place-items-center text-muted-foreground">
           <Film className="size-8" />

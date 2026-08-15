@@ -1,18 +1,18 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { getTvSeasonCountsTmdb } from "@/lib/tmdb.functions";
+import { moveNewSeasonsToWatchlist, notifyMovedSeasons } from "@/lib/autoWatchlist";
 import { useMovies } from "@/hooks/useMovies";
 
-// Watched TV shows are checked against TMDB once per session: if a show now
-// has more seasons than it did when it was marked "watched", that means a
-// new season aired since the person finished it. It gets moved back to the
-// watchlist automatically (and its stored season count updated), so once
-// they catch up and mark it "watched" again it's ready to repeat the same
-// check the next time a season drops. Only applies to shows already marked
-// watched — anything still on the watchlist is left alone.
+// Background safety net, checked once per session: if a watched show now
+// has more seasons than it did when it was marked "watched", a new season
+// aired since. It gets moved back to the watchlist automatically (and its
+// stored season count updated). The instant case — marking a show watched
+// right now while a newer season is already out — is handled immediately
+// by useUpdateMovie/useAddMovie in useMovies.js, so it doesn't need to wait
+// for the app to reload. Only applies to shows already marked watched —
+// anything still on the watchlist is left alone.
 export function useNewSeasonAlerts() {
   const { data: movies } = useMovies();
   const fetchCounts = useServerFn(getTvSeasonCountsTmdb);
@@ -34,32 +34,10 @@ export function useNewSeasonAlerts() {
     checkedRef.current = true;
 
     (async () => {
-      try {
-        const { counts } = await fetchCounts({
-          data: { tmdbIds: watchedShows.map((m) => Number(m.tmdb_id)) },
-        });
-        const latestById = new Map(counts.map((c) => [c.tmdbId, c.number_of_seasons]));
-
-        const moved = [];
-        for (const show of watchedShows) {
-          const latest = latestById.get(Number(show.tmdb_id));
-          if (typeof latest === "number" && latest > show.number_of_seasons) {
-            const { error } = await supabase
-              .from("movies")
-              .update({ status: "watchlist", number_of_seasons: latest })
-              .eq("id", show.id);
-            if (!error) moved.push(show.title);
-          }
-        }
-
-        if (moved.length > 0) {
-          queryClient.invalidateQueries({ queryKey: ["movies"] });
-          moved.forEach((title) => {
-            toast.info(`New season of "${title}" is out — moved back to your watchlist.`);
-          });
-        }
-      } catch {
-        // Background nicety — failures here shouldn't interrupt the app.
+      const moved = await moveNewSeasonsToWatchlist({ fetchCounts, showsToCheck: watchedShows });
+      if (moved.length > 0) {
+        queryClient.invalidateQueries({ queryKey: ["movies"] });
+        notifyMovedSeasons(moved);
       }
     })();
   }, [movies, fetchCounts, queryClient]);

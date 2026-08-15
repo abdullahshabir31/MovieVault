@@ -27,7 +27,14 @@ export default defineConfig({
       manifest: false,
       outDir: ".output/public",
       includeAssets: ["favicon.ico", "favicon.png", "icons/*.png"],
-      workbox: {
+      // Switched from the default generateSW strategy to injectManifest so
+      // src/sw.js can add its own "push" / "notificationclick" listeners —
+      // generateSW only lets you configure caching, not custom event
+      // handlers, and web push notifications need those.
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.js",
+      injectManifest: {
         globDirectory: ".output/public",
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest}"],
       },

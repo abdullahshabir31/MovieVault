@@ -1,19 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { CheckCircle2, Film, ListPlus, Loader2, Search, Star, X } from "lucide-react";
+import { Film, Loader2, Search, Star, X } from "lucide-react";
 import { searchMoviesTmdb, getBrowseRowsTmdb, ALL_GENRES } from "@/lib/tmdb.functions";
-import { useAddMovie, useMovies, useUpdateMovie } from "@/hooks/useMovies";
+import { useMovies } from "@/hooks/useMovies";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MoviePoster } from "@/components/MoviePoster";
-import { MovieFormDialog } from "@/components/MovieFormDialog";
+import { MovieDetails } from "@/components/MovieDetails";
 import { EmptyState } from "@/components/EmptyState";
 import { ListSkeleton } from "@/components/LoadingState";
 import { MovieRow, MovieRowSkeleton } from "@/components/MovieRow";
 import { MovieGrid } from "@/components/MovieGrid";
-import { formatDate } from "@/components/MovieCard";
 import { cn } from "@/lib/utils";
 
 function useDebounced(value, delay = 350) {
@@ -46,16 +44,19 @@ function levenshtein(a, b) {
 export function MovieSearch({ initialQuery = "" }) {
   const [term, setTerm] = useState(initialQuery);
   const debounced = useDebounced(term.trim());
+  // The results list below only reacts to this — it's set explicitly on
+  // Enter or when a suggestion is picked, not on every keystroke, so the
+  // list stays put while the person is still typing/browsing the dropdown.
+  const [submittedTerm, setSubmittedTerm] = useState(initialQuery.trim());
   const [mediaFilter, setMediaFilter] = useState("movie");
   const [category, setCategory] = useState("all");
   const search = useServerFn(searchMoviesTmdb);
   const browseRows = useServerFn(getBrowseRowsTmdb);
   const { data: library } = useMovies();
-  const [selected, setSelected] = useState(null);
-  const [formStatus, setFormStatus] = useState("watchlist");
-  const [formOpen, setFormOpen] = useState(false);
-  const addMovie = useAddMovie();
-  const updateMovie = useUpdateMovie();
+  // Whatever movie/series was clicked — from a browse row, a search result,
+  // or a suggestion — opens the same rich details box (with its language
+  // info, cast-free overview, and watched/watchlist actions inside it).
+  const [detailsMovie, setDetailsMovie] = useState(null);
 
   // A genre chip that has no TV equivalent (e.g. Horror) can't stay selected
   // when switching to the Series view, so drop back to "All" whenever the
@@ -76,14 +77,14 @@ export function MovieSearch({ initialQuery = "" }) {
   }, [library]);
 
   const { data, isFetching, isError, error } = useQuery({
-    queryKey: ["tmdb-search", debounced],
-    queryFn: () => search({ data: { query: debounced } }),
-    enabled: debounced.length > 1,
+    queryKey: ["tmdb-search", submittedTerm],
+    queryFn: () => search({ data: { query: submittedTerm } }),
+    enabled: submittedTerm.length > 1,
     staleTime: 60_000,
   });
 
   const results = data?.results ?? [];
-  const isBrowsing = debounced.length <= 1;
+  const isBrowsing = submittedTerm.length <= 1;
 
   // Lightweight autocomplete dropdown, shown right under the search bar as
   // the person types (like a Google-style suggestion list), with poster
@@ -162,25 +163,16 @@ export function MovieSearch({ initialQuery = "" }) {
     return existing.status === "watched" ? "Watched" : "In Watchlist";
   };
 
-  const openForm = (movie, status) => {
-    setSelected(movie);
-    setFormStatus(status);
-    setFormOpen(true);
-  };
-
   const handleSelectSuggestion = (movie) => {
     setTerm(movie.title);
+    setSubmittedTerm(movie.title.trim());
     setSuggestOpen(false);
   };
 
-  const handleRowSelect = (movie) => {
-    const existing = libraryByTmdb.get(`${movie.media_type ?? "movie"}:${Number(movie.tmdb_id)}`);
-    if (existing) {
-      openForm({ ...movie, ...existing }, "watched");
-    } else {
-      openForm(movie, "watchlist");
-    }
-  };
+  // Clicking any movie/series tile — browse row, grid, or search result —
+  // opens the same details box; it looks itself up against the library, so
+  // no need to pre-merge the "already saved" fields here.
+  const handleRowSelect = (movie) => setDetailsMovie(movie);
 
   return (
     <div className="space-y-4">
@@ -189,19 +181,23 @@ export function MovieSearch({ initialQuery = "" }) {
         <Input
           value={term}
           onChange={(event) => {
-            setTerm(event.target.value);
+            const value = event.target.value;
+            setTerm(value);
             setSuggestOpen(true);
+            // Clearing the box by hand should drop straight back to
+            // browsing — nothing "in progress" to preserve there.
+            if (!value.trim()) setSubmittedTerm("");
           }}
           onFocus={() => setSuggestOpen(true)}
           onBlur={() => setSuggestOpen(false)}
           onKeyDown={(event) => {
             if (event.key === "Escape") setSuggestOpen(false);
-            // Enter commits the typed query: the full results list below is
-            // already live (it tracks the same debounced term), so all this
-            // needs to do is dismiss the suggestion dropdown and drop the
-            // keyboard on mobile.
+            // Enter commits the typed query: this is what actually updates
+            // the results list below, dismisses the suggestion dropdown, and
+            // drops the keyboard on mobile.
             if (event.key === "Enter") {
               event.preventDefault();
+              setSubmittedTerm(term.trim());
               setSuggestOpen(false);
               event.currentTarget.blur();
             }
@@ -221,6 +217,7 @@ export function MovieSearch({ initialQuery = "" }) {
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => {
               setTerm("");
+              setSubmittedTerm("");
               setSuggestOpen(false);
             }}
             aria-label="Clear search"
@@ -337,7 +334,7 @@ export function MovieSearch({ initialQuery = "" }) {
         </div>
       ) : null}
 
-      {isFetching && debounced.length > 1 ? <ListSkeleton /> : null}
+      {isFetching && submittedTerm.length > 1 ? <ListSkeleton /> : null}
 
       {isError ? (
         <EmptyState
@@ -347,11 +344,11 @@ export function MovieSearch({ initialQuery = "" }) {
         />
       ) : null}
 
-      {!isFetching && !isError && debounced.length > 1 && results.length === 0 ? (
+      {!isFetching && !isError && submittedTerm.length > 1 && results.length === 0 ? (
         <EmptyState
           icon={Search}
           title="Nothing found"
-          description={`Nothing matched “${debounced}”.`}
+          description={`Nothing matched “${submittedTerm}”.`}
         />
       ) : null}
 
@@ -418,15 +415,14 @@ export function MovieSearch({ initialQuery = "" }) {
       {!isFetching && results.length > 0 ? (
         <ul className="space-y-3">
           {results.map((movie) => {
-            const existing = libraryByTmdb.get(
-              `${movie.media_type ?? "movie"}:${Number(movie.tmdb_id)}`,
-            );
+            const badge = badgeForMovie(movie);
             return (
-              <li
-                key={`${movie.media_type}-${movie.tmdb_id}`}
-                className="rounded-2xl border border-border bg-card p-3 shadow-card"
-              >
-                <div className="flex gap-3">
+              <li key={`${movie.media_type}-${movie.tmdb_id}`}>
+                <button
+                  type="button"
+                  onClick={() => setDetailsMovie(movie)}
+                  className="flex w-full gap-3 rounded-2xl border border-border bg-card p-3 text-left shadow-card transition-colors hover:bg-secondary/40"
+                >
                   <MoviePoster
                     src={movie.poster_url}
                     alt={movie.title}
@@ -454,98 +450,22 @@ export function MovieSearch({ initialQuery = "" }) {
                     <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                       {movie.overview}
                     </p>
-                  </div>
-                </div>
-
-                {existing ? (
-                  <div className="mt-3 space-y-2 rounded-xl bg-surface p-3">
-                    {existing.status === "watched" ? (
-                      <>
-                        <p className="flex items-center gap-2 text-sm font-bold text-success">
-                          <CheckCircle2 className="size-4" /> ALREADY WATCHED
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {existing.watched_date
-                            ? `You watched this on ${formatDate(existing.watched_date)}.`
-                            : "This is already in your watched list."}
-                          {existing.personal_rating
-                            ? ` You rated it ${existing.personal_rating}/10.`
-                            : ""}
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="flex items-center gap-2 text-sm font-bold text-primary">
-                          📋 This is on your watchlist.
-                        </p>
-                        <Button
-                          size="sm"
-                          className="h-11 w-full"
-                          onClick={() => openForm({ ...movie, ...existing }, "watched")}
-                        >
-                          <CheckCircle2 className="mr-2 size-4" /> Mark as watched
-                        </Button>
-                      </>
-                    )}
-                    <p className="text-[11px] text-muted-foreground">
-                      This is already in your library.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="mt-3 space-y-2">
-                    <Badge variant="secondary" className="text-[11px]">
-                      Not watched yet
+                    <Badge variant={badge ? "secondary" : "outline"} className="mt-2 text-[11px]">
+                      {badge ?? "Not watched yet"}
                     </Badge>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant="secondary"
-                        className="h-11"
-                        onClick={() => openForm(movie, "watchlist")}
-                      >
-                        <ListPlus className="mr-2 size-4" /> Watchlist
-                      </Button>
-                      <Button className="h-11" onClick={() => openForm(movie, "watched")}>
-                        <CheckCircle2 className="mr-2 size-4" /> Watched
-                      </Button>
-                    </div>
                   </div>
-                )}
+                </button>
               </li>
             );
           })}
         </ul>
       ) : null}
 
-      <MovieFormDialog
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        movie={selected}
-        initialStatus={formStatus}
-        title={selected?.id ? "Mark as watched" : "Add to your library"}
-        submitLabel={selected?.id ? "Save" : "Add movie"}
-        lockStatus={Boolean(selected?.id)}
-        pending={addMovie.isPending || updateMovie.isPending}
-        onSubmit={(values) => {
-          if (selected?.id) {
-            updateMovie.mutate(
-              {
-                id: selected.id,
-                updates: { ...values, status: "watched" },
-                successMessage: `Marked "${selected.title}" as watched`,
-              },
-              { onSuccess: () => setFormOpen(false) },
-            );
-            return;
-          }
-          addMovie.mutate({ ...selected, ...values }, { onSuccess: () => setFormOpen(false) });
-        }}
+      <MovieDetails
+        movie={detailsMovie}
+        open={Boolean(detailsMovie)}
+        onOpenChange={() => setDetailsMovie(null)}
       />
-
-      {addMovie.isPending ? (
-        <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="size-3 animate-spin" /> Saving…
-        </p>
-      ) : null}
     </div>
   );
 }

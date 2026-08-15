@@ -3,6 +3,23 @@ import { z } from "zod";
 
 const IMG = "https://image.tmdb.org/t/p";
 
+// TMDB's /movie/{id} and /tv/{id} detail endpoints return spoken_languages
+// with an english_name per entry, so the original language usually resolves
+// straight from that list. This is only a fallback for the rare case where
+// the original language itself isn't in that list.
+const LANGUAGE_NAME_FALLBACK = {
+  en: "English", hi: "Hindi", ur: "Urdu", es: "Spanish", fr: "French",
+  de: "German", it: "Italian", ja: "Japanese", ko: "Korean", zh: "Chinese",
+  ru: "Russian", pt: "Portuguese", ar: "Arabic", tr: "Turkish", ta: "Tamil",
+  te: "Telugu", pa: "Punjabi", th: "Thai", nl: "Dutch", sv: "Swedish",
+};
+
+function languageName(iso, spokenLanguages) {
+  if (!iso) return null;
+  const match = (spokenLanguages || []).find((l) => l.iso_639_1 === iso);
+  return match?.english_name || match?.name || LANGUAGE_NAME_FALLBACK[iso] || iso.toUpperCase();
+}
+
 function tmdbHeaders(key) {
   return key.startsWith("ey")
     ? { Authorization: `Bearer ${key}`, accept: "application/json" }
@@ -37,6 +54,12 @@ function mapItem(m, mediaTypeHint) {
     m.media_type || mediaTypeHint || (m.first_air_date !== undefined ? "tv" : "movie");
   const isTv = mediaType === "tv";
   const releaseDate = isTv ? m.first_air_date : m.release_date;
+  // spoken_languages only comes through on the full /movie/{id} or /tv/{id}
+  // detail response (not search/discover list results), so this stays empty
+  // until a single title's full details are fetched.
+  const spokenLanguages = Array.isArray(m.spoken_languages)
+    ? m.spoken_languages.map((l) => l.english_name || l.name).filter(Boolean)
+    : [];
   return {
     tmdb_id: m.id,
     media_type: mediaType,
@@ -46,6 +69,8 @@ function mapItem(m, mediaTypeHint) {
     release_year: releaseDate ? Number(releaseDate.slice(0, 4)) || null : null,
     release_date: releaseDate || null,
     overview: m.overview || "",
+    original_language: languageName(m.original_language, m.spoken_languages),
+    spoken_languages: spokenLanguages,
     tmdb_rating: typeof m.vote_average === "number" ? Math.round(m.vote_average * 10) / 10 : null,
     genres: Array.isArray(m.genres) ? m.genres.map((g) => g.name) : [],
     runtime: !isTv ? (m.runtime ?? null) : null,
@@ -230,6 +255,120 @@ export const getMovieSequelsTmdb = createServerFn({ method: "GET" })
     }
 
     return { sequels };
+  });
+
+// Preferred country order for pulling a certification/age-rating out of
+// TMDB's release_dates (movies) / content_ratings (tv) data, which is keyed
+// by country. Falls back to the first country that has one at all.
+const CERT_COUNTRY_PRIORITY = ["US", "GB", "PK", "IN"];
+
+function extractCertification(json, isTv) {
+  if (isTv) {
+    const results = json.content_ratings?.results || [];
+    for (const country of CERT_COUNTRY_PRIORITY) {
+      const match = results.find((r) => r.iso_3166_1 === country && r.rating);
+      if (match) return match.rating;
+    }
+    return results.find((r) => r.rating)?.rating || null;
+  }
+
+  const results = json.release_dates?.results || [];
+  const certFor = (entry) => entry?.release_dates?.find((rd) => rd.certification)?.certification;
+  for (const country of CERT_COUNTRY_PRIORITY) {
+    const cert = certFor(results.find((r) => r.iso_3166_1 === country));
+    if (cert) return cert;
+  }
+  for (const entry of results) {
+    const cert = certFor(entry);
+    if (cert) return cert;
+  }
+  return null;
+}
+
+// Dedupes crew entries by person id (someone can be credited for more than
+// one writing job, e.g. "Screenplay" and "Story").
+function dedupeById(list) {
+  const seen = new Set();
+  return list.filter((c) => {
+    if (seen.has(c.id)) return false;
+    seen.add(c.id);
+    return true;
+  });
+}
+
+function extractCredits(json) {
+  const cast = (json.credits?.cast || []).slice(0, 15).map((c) => ({
+    id: c.id,
+    name: c.name,
+    character: c.character || "",
+    photo_url: c.profile_path ? `${IMG}/w185${c.profile_path}` : null,
+  }));
+
+  const crewRaw = json.credits?.crew || [];
+  const directors = dedupeById(crewRaw.filter((c) => c.job === "Director"));
+  const writers = dedupeById(
+    crewRaw.filter((c) => ["Writer", "Screenplay", "Story", "Author"].includes(c.job)),
+  );
+  const toCrewEntry = (c) => ({
+    id: c.id,
+    name: c.name,
+    job: c.job,
+    photo_url: c.profile_path ? `${IMG}/w185${c.profile_path}` : null,
+  });
+  const crew = [...directors.map(toCrewEntry), ...writers.map(toCrewEntry)];
+
+  return { cast, crew };
+}
+
+function extractVideos(json) {
+  const typeRank = { Trailer: 0, Teaser: 1, Clip: 2, Featurette: 3 };
+  return (json.videos?.results || [])
+    .filter((v) => v.site === "YouTube" && v.key && typeRank[v.type] !== undefined)
+    .sort((a, b) => (typeRank[a.type] ?? 9) - (typeRank[b.type] ?? 9))
+    .slice(0, 12)
+    .map((v) => ({
+      key: v.key,
+      name: v.name || "Video",
+      type: v.type,
+      thumbnail_url: `https://img.youtube.com/vi/${v.key}/hqdefault.jpg`,
+    }));
+}
+
+function extractRecommendations(json, mediaType) {
+  return (json.recommendations?.results || [])
+    .filter((m) => m && m.id && m.poster_path)
+    .slice(0, 20)
+    .map((m) => mapItem(m, mediaType));
+}
+
+// Fetches everything the details popup needs beyond the base title info in
+// a single TMDB request via append_to_response: certification/age rating,
+// cast & crew, YouTube trailers/teasers, and "you might also like"
+// recommendations. Loaded on demand once the details box is opened.
+export const getMovieExtrasTmdb = createServerFn({ method: "GET" })
+  .validator((input) =>
+    z
+      .object({
+        tmdbId: z.number().int().positive(),
+        mediaType: z.enum(["movie", "tv"]).default("movie"),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    const isTv = data.mediaType === "tv";
+    const path = isTv ? `/tv/${data.tmdbId}` : `/movie/${data.tmdbId}`;
+    const append = isTv
+      ? "credits,videos,recommendations,content_ratings"
+      : "credits,videos,recommendations,release_dates";
+    const json = await tmdbFetch(path, { language: "en-US", append_to_response: append });
+    const { cast, crew } = extractCredits(json);
+    return {
+      certification: extractCertification(json, isTv),
+      cast,
+      crew,
+      videos: extractVideos(json),
+      recommendations: extractRecommendations(json, data.mediaType),
+    };
   });
 
 export const getTrendingTmdb = createServerFn({ method: "GET" }).handler(async () => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   CalendarCheck,
   CalendarClock,
@@ -23,18 +23,48 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MoviePoster } from "@/components/MoviePoster";
 import { MovieFormDialog } from "@/components/MovieFormDialog";
+import { MovieLanguages } from "@/components/MovieLanguages";
+import {
+  CastCrewButton,
+  CertificationBadge,
+  RecommendationsRow,
+  TrailersButton,
+} from "@/components/MovieExtras";
 import { Rating } from "@/components/Rating";
 import { SeriesSeasons } from "@/components/SeriesSeasons";
 import { formatDate } from "@/components/MovieCard";
-import { useDeleteMovieWithUndo, useUpdateMovie } from "@/hooks/useMovies";
+import { useAddMovie, useDeleteMovieWithUndo, useMovies, useUpdateMovie } from "@/hooks/useMovies";
 
-export function MovieDetails({ movie, open, onOpenChange }) {
+// `movie` can be either a saved library row (has `id`/`status`/etc.) or a
+// plain TMDB result (from search or a browse row) that isn't saved yet. In
+// the latter case this looks the title up in the library by tmdb_id so
+// someone who already added it still sees their status/rating/notes, and
+// falls back to "add to library" actions when it truly isn't saved yet.
+export function MovieDetails({ movie: movieInput, open, onOpenChange }) {
   const [editing, setEditing] = useState(false);
   const [markWatched, setMarkWatched] = useState(false);
+  const [addingStatus, setAddingStatus] = useState(null); // "watched" | "watchlist" | null
+  const [relatedMovie, setRelatedMovie] = useState(null); // recommendation opened from this box
   const updateMovie = useUpdateMovie();
+  const addMovie = useAddMovie();
   const deleteMovieWithUndo = useDeleteMovieWithUndo();
+  const { data: library } = useMovies();
+
+  const libraryEntry = useMemo(() => {
+    if (!movieInput || movieInput.id) return null;
+    return (
+      (library ?? []).find(
+        (m) =>
+          (m.media_type ?? "movie") === (movieInput.media_type ?? "movie") &&
+          Number(m.tmdb_id) === Number(movieInput.tmdb_id),
+      ) ?? null
+    );
+  }, [library, movieInput]);
+
+  const movie = movieInput && libraryEntry ? { ...movieInput, ...libraryEntry } : movieInput;
 
   if (!movie) return null;
+  const inLibrary = Boolean(movie.id);
   const watched = movie.status === "watched";
   const isTv = movie.media_type === "tv";
   const releaseDate = movie.release_date ? new Date(`${movie.release_date}T00:00:00`) : null;
@@ -52,8 +82,8 @@ export function MovieDetails({ movie, open, onOpenChange }) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[92dvh] gap-0 overflow-y-auto p-0 sm:max-w-2xl">
-          <div className="relative">
+        <DialogContent className="max-h-[92dvh] gap-0 overflow-x-hidden overflow-y-auto p-0 sm:max-w-2xl">
+          <div className="relative min-w-0">
             <div className="relative h-44 w-full overflow-hidden bg-secondary sm:h-56">
               {movie.backdrop_url || movie.poster_url ? (
                 <img
@@ -79,21 +109,23 @@ export function MovieDetails({ movie, open, onOpenChange }) {
                   />
                 ) : null}
                 <div className="pb-1">
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${
-                      watched ? "bg-success/15 text-success" : "bg-primary/15 text-primary"
-                    }`}
-                  >
-                    {watched ? (
-                      <>
-                        <CheckCircle2 className="size-3" /> Watched
-                      </>
-                    ) : (
-                      <>
-                        <ListPlus className="size-3" /> Watchlist
-                      </>
-                    )}
-                  </span>
+                  {inLibrary ? (
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${
+                        watched ? "bg-success/15 text-success" : "bg-primary/15 text-primary"
+                      }`}
+                    >
+                      {watched ? (
+                        <>
+                          <CheckCircle2 className="size-3" /> Watched
+                        </>
+                      ) : (
+                        <>
+                          <ListPlus className="size-3" /> Watchlist
+                        </>
+                      )}
+                    </span>
+                  ) : null}
                   {isUpcoming ? (
                     <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-1 text-[11px] font-semibold text-amber-500">
                       <CalendarClock className="size-3" /> Upcoming
@@ -104,6 +136,11 @@ export function MovieDetails({ movie, open, onOpenChange }) {
                       <Tv className="size-3" /> TV Series
                     </span>
                   ) : null}
+                  <CertificationBadge
+                    tmdbId={movie.tmdb_id}
+                    mediaType={isTv ? "tv" : "movie"}
+                    enabled={open}
+                  />
                 </div>
               </div>
 
@@ -142,6 +179,12 @@ export function MovieDetails({ movie, open, onOpenChange }) {
                 ) : null}
               </div>
 
+              {!inLibrary ? (
+                <Badge variant="secondary" className="mt-3 text-[11px]">
+                  Not in your library yet
+                </Badge>
+              ) : null}
+
               {movie.genres?.length ? (
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {movie.genres.map((genre) => (
@@ -158,6 +201,25 @@ export function MovieDetails({ movie, open, onOpenChange }) {
                 </p>
               ) : null}
 
+              <div className="mt-4 flex gap-2">
+                <CastCrewButton
+                  tmdbId={movie.tmdb_id}
+                  mediaType={isTv ? "tv" : "movie"}
+                  enabled={open}
+                />
+                <TrailersButton
+                  tmdbId={movie.tmdb_id}
+                  mediaType={isTv ? "tv" : "movie"}
+                  enabled={open}
+                />
+              </div>
+
+              <MovieLanguages
+                tmdbId={movie.tmdb_id}
+                mediaType={isTv ? "tv" : "movie"}
+                enabled={open}
+              />
+
               {isTv ? (
                 <div className="mt-4">
                   <SeriesSeasons tmdbId={movie.tmdb_id} enabled={open} />
@@ -173,34 +235,58 @@ export function MovieDetails({ movie, open, onOpenChange }) {
                 </div>
               ) : null}
 
+              <RecommendationsRow
+                tmdbId={movie.tmdb_id}
+                mediaType={isTv ? "tv" : "movie"}
+                enabled={open}
+                onSelect={setRelatedMovie}
+              />
+
               <div className="mt-6 grid gap-2 sm:grid-cols-2">
-                {watched ? (
-                  <Button variant="secondary" className="h-12" onClick={moveToWatchlist}>
-                    {updateMovie.isPending ? (
-                      <Loader2 className="mr-2 size-4 animate-spin" />
+                {inLibrary ? (
+                  <>
+                    {watched ? (
+                      <Button variant="secondary" className="h-12" onClick={moveToWatchlist}>
+                        {updateMovie.isPending ? (
+                          <Loader2 className="mr-2 size-4 animate-spin" />
+                        ) : (
+                          <ListPlus className="mr-2 size-4" />
+                        )}
+                        Move to watchlist
+                      </Button>
                     ) : (
-                      <ListPlus className="mr-2 size-4" />
+                      <Button className="h-12" onClick={() => setMarkWatched(true)}>
+                        <CheckCircle2 className="mr-2 size-4" /> Mark as watched
+                      </Button>
                     )}
-                    Move to watchlist
-                  </Button>
+                    <Button variant="secondary" className="h-12" onClick={() => setEditing(true)}>
+                      <Pencil className="mr-2 size-4" /> Edit details
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="h-12 text-destructive hover:text-destructive sm:col-span-2"
+                      onClick={() => {
+                        deleteMovieWithUndo(movie);
+                        onOpenChange(false);
+                      }}
+                    >
+                      <Trash2 className="mr-2 size-4" /> Delete from library
+                    </Button>
+                  </>
                 ) : (
-                  <Button className="h-12" onClick={() => setMarkWatched(true)}>
-                    <CheckCircle2 className="mr-2 size-4" /> Mark as watched
-                  </Button>
+                  <>
+                    <Button
+                      variant="secondary"
+                      className="h-12"
+                      onClick={() => setAddingStatus("watchlist")}
+                    >
+                      <ListPlus className="mr-2 size-4" /> Add to watchlist
+                    </Button>
+                    <Button className="h-12" onClick={() => setAddingStatus("watched")}>
+                      <CheckCircle2 className="mr-2 size-4" /> Mark as watched
+                    </Button>
+                  </>
                 )}
-                <Button variant="secondary" className="h-12" onClick={() => setEditing(true)}>
-                  <Pencil className="mr-2 size-4" /> Edit details
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="h-12 text-destructive hover:text-destructive sm:col-span-2"
-                  onClick={() => {
-                    deleteMovieWithUndo(movie);
-                    onOpenChange(false);
-                  }}
-                >
-                  <Trash2 className="mr-2 size-4" /> Delete from library
-                </Button>
               </div>
             </div>
           </div>
@@ -242,6 +328,33 @@ export function MovieDetails({ movie, open, onOpenChange }) {
             { onSuccess: () => setMarkWatched(false) },
           );
         }}
+      />
+
+      <MovieFormDialog
+        open={Boolean(addingStatus)}
+        onOpenChange={(next) => !next && setAddingStatus(null)}
+        movie={movie}
+        initialStatus={addingStatus ?? "watchlist"}
+        title="Add to your library"
+        submitLabel="Add movie"
+        pending={addMovie.isPending}
+        onSubmit={(values) => {
+          addMovie.mutate(
+            { ...movie, ...values },
+            {
+              onSuccess: () => {
+                setAddingStatus(null);
+                onOpenChange(false);
+              },
+            },
+          );
+        }}
+      />
+
+      <MovieDetails
+        movie={relatedMovie}
+        open={Boolean(relatedMovie)}
+        onOpenChange={(next) => !next && setRelatedMovie(null)}
       />
     </>
   );

@@ -273,6 +273,7 @@ export const ALL_GENRES = [
 // appear in as the user scrolls down.
 const ROW_DEFS = [
   { key: "trending", title: "Trending Now", type: "trending" },
+  { key: "upcoming", title: "Upcoming", type: "upcoming" },
   { key: "popular", title: "Popular", type: "popular" },
   { key: "top_rated", title: "Top Rated", type: "top_rated" },
   ...ALL_GENRES.map((g) => ({
@@ -289,6 +290,11 @@ const ROWS_PAGE_SIZE = 4;
 
 // Safety cap so a scroll-happy client can't force unlimited upstream TMDB calls.
 const MAX_ROW_PAGES = 15;
+
+// Today's date as YYYY-MM-DD, for TMDB's first_air_date.gte filter.
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 // Interleaves two lists (movie results, TV results) so a row/grid shows a mix
 // of both rather than all of one type followed by all of the other.
@@ -336,6 +342,12 @@ async function fetchRowPage(rowDef, page, mediaType = "all") {
       const totalPages = Math.min(json.total_pages || 1, MAX_ROW_PAGES);
       return { movies, hasMore: page < totalPages };
     }
+    if (rowDef.type === "upcoming") {
+      const json = await tmdbFetch("/movie/upcoming", { language: "en-US", region: "US", page });
+      const movies = (json.results || []).filter((m) => m && m.id).map((m) => mapItem(m, "movie"));
+      const totalPages = Math.min(json.total_pages || 1, MAX_ROW_PAGES);
+      return { movies, hasMore: page < totalPages };
+    }
     const movieJson = await fetchByType(rowDef, "movie", page);
     const movies = (movieJson?.results || [])
       .filter((m) => m && m.id)
@@ -347,6 +359,21 @@ async function fetchRowPage(rowDef, page, mediaType = "all") {
   if (mediaType === "tv") {
     if (rowDef.type === "trending") {
       const json = await tmdbFetch("/trending/tv/week", { language: "en-US", page });
+      const movies = (json.results || []).filter((m) => m && m.id).map((m) => mapItem(m, "tv"));
+      const totalPages = Math.min(json.total_pages || 1, MAX_ROW_PAGES);
+      return { movies, hasMore: page < totalPages };
+    }
+    if (rowDef.type === "upcoming") {
+      // TMDB has no dedicated "upcoming TV" endpoint like it does for movies,
+      // so this discovers shows whose first air date hasn't happened yet,
+      // ranked by popularity so obscure future listings don't crowd out
+      // shows people actually anticipate.
+      const json = await tmdbFetch("/discover/tv", {
+        language: "en-US",
+        sort_by: "popularity.desc",
+        "first_air_date.gte": todayIso(),
+        page,
+      });
       const movies = (json.results || []).filter((m) => m && m.id).map((m) => mapItem(m, "tv"));
       const totalPages = Math.min(json.total_pages || 1, MAX_ROW_PAGES);
       return { movies, hasMore: page < totalPages };
@@ -370,6 +397,26 @@ async function fetchRowPage(rowDef, page, mediaType = "all") {
       .map((m) => mapItem(m));
     const totalPages = Math.min(json.total_pages || 1, MAX_ROW_PAGES);
     return { movies, hasMore: page < totalPages };
+  }
+  if (rowDef.type === "upcoming") {
+    const [movieJson, tvJson] = await Promise.all([
+      tmdbFetch("/movie/upcoming", { language: "en-US", region: "US", page }),
+      tmdbFetch("/discover/tv", {
+        language: "en-US",
+        sort_by: "popularity.desc",
+        "first_air_date.gte": todayIso(),
+        page,
+      }),
+    ]);
+    const movieItems = (movieJson?.results || [])
+      .filter((m) => m && m.id)
+      .map((m) => mapItem(m, "movie"));
+    const tvItems = (tvJson?.results || []).filter((m) => m && m.id).map((m) => mapItem(m, "tv"));
+    const movies = interleave(movieItems, tvItems);
+    const movieTotalPages = Math.min(movieJson?.total_pages || 1, MAX_ROW_PAGES);
+    const tvTotalPages = Math.min(tvJson?.total_pages || 1, MAX_ROW_PAGES);
+    const hasMore = page < Math.max(movieTotalPages, tvTotalPages);
+    return { movies, hasMore };
   }
 
   const wantsTv = rowDef.type !== "genre" || Boolean(rowDef.tvGenreId);
@@ -404,10 +451,20 @@ export const getBrowseRowsTmdb = createServerFn({ method: "GET" })
     const slice = ROW_DEFS.slice(data.offset, data.offset + ROWS_PAGE_SIZE);
     const pages = await Promise.all(slice.map((rowDef) => fetchRowPage(rowDef, 1, data.mediaType)));
 
+    // The "Upcoming" row's title is media-specific ("Upcoming Movies" on the
+    // Movies tab, "Upcoming Series" on the TV Series tab) even though the
+    // row definition itself is shared between both tabs.
+    const rowTitle = (rowDef) => {
+      if (rowDef.key !== "upcoming") return rowDef.title;
+      if (data.mediaType === "movie") return "Upcoming Movies";
+      if (data.mediaType === "tv") return "Upcoming Series";
+      return rowDef.title;
+    };
+
     const rows = slice
       .map((rowDef, i) => ({
         key: rowDef.key,
-        title: rowDef.title,
+        title: rowTitle(rowDef),
         movies: pages[i].movies,
         hasMore: pages[i].hasMore,
       }))

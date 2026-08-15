@@ -25,6 +25,11 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       manifest: false,
+      // This app has no index.html (TanStack Start renders the shell
+      // server-side), so VitePWA's default HTML-injected registration
+      // script never runs. Register manually via `virtual:pwa-register`
+      // instead — see the effect in src/routes/__root.jsx.
+      injectRegister: false,
       outDir: ".output/public",
       includeAssets: ["favicon.ico", "favicon.png", "icons/*.png"],
       // Switched from the default generateSW strategy to injectManifest so

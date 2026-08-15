@@ -145,6 +145,19 @@ function RootComponent() {
     return () => sub.subscription.unsubscribe();
   }, [router, queryClient]);
 
+  // Register the PWA service worker. There's no index.html for VitePWA's
+  // default auto-injected registration script to hook into (TanStack Start
+  // renders the shell server-side), so without this the service worker
+  // never installs — which left the Notifications toggle on the profile
+  // page permanently disabled (it waits on navigator.serviceWorker.ready,
+  // which never resolves without a registration).
+  useEffect(() => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+    import("virtual:pwa-register").then(({ registerSW }) => {
+      registerSW({ immediate: true });
+    });
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>

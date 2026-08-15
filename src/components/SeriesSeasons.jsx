@@ -129,7 +129,9 @@ export function SeriesSeasons({ tmdbId, enabled }) {
   const [expandedSeason, setExpandedSeason] = useState(null);
 
   const { data, isFetching, isError } = useQuery({
-    queryKey: ["tmdb-tv-seasons", tmdbId],
+    // Shared with MovieLanguages so the two don't both fetch full TV details
+    // independently when the same details box is open.
+    queryKey: ["tmdb-full-details", "tv", tmdbId],
     queryFn: () => fetchMovie({ data: { tmdbId, mediaType: "tv" } }),
     enabled: Boolean(enabled && tmdbId),
     staleTime: 10 * 60_000,

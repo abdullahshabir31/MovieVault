@@ -78,7 +78,10 @@ function Landing() {
           </p>
           <div className="mt-7 flex flex-col gap-3 sm:flex-row">
             <Button asChild className="h-13 px-6 text-base">
-              <Link to={user ? "/dashboard" : "/auth"}>
+              <Link
+                to={user ? "/dashboard" : "/auth"}
+                search={user ? undefined : { mode: "register" }}
+              >
                 {user ? "Go to dashboard" : "Create your free vault"}
               </Link>
             </Button>

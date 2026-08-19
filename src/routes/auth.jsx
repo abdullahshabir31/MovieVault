@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { Film, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,6 +14,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/auth")({
+  validateSearch: (search) => ({
+    mode: search?.mode === "register" ? "register" : "login",
+  }),
   head: () => ({
     meta: [
       { title: "Sign in — MovieVault" },
@@ -282,6 +285,13 @@ function RegisterForm() {
 }
 
 function AuthPage() {
+  const { mode } = useSearch({ from: "/auth" });
+  const [tab, setTab] = useState(mode);
+
+  useEffect(() => {
+    setTab(mode);
+  }, [mode]);
+
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-background px-5 py-10">
       <div className="w-full max-w-md">
@@ -296,7 +306,7 @@ function AuthPage() {
         </div>
 
         <div className="rounded-3xl border border-border bg-card p-5 shadow-card">
-          <Tabs defaultValue="login">
+          <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="mb-5 grid w-full grid-cols-2">
               <TabsTrigger value="login">Sign in</TabsTrigger>
               <TabsTrigger value="register">Register</TabsTrigger>
